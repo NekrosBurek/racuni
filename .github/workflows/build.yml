@@ -3,7 +3,13 @@ name: Build APK
 on:
   push:
     branches: [main]
+    paths-ignore: ['**.md', 'LICENSE', '.gitignore']
   workflow_dispatch:
+
+# A newer push makes the running build pointless.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -25,6 +31,17 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - run: npm ci
+
+      # Native code only changes with dependencies, config or assets; reuse its build outputs otherwise.
+      # Restored after npm ci, which would delete the node_modules parts.
+      - uses: actions/cache@v4
+        with:
+          key: native-${{ runner.os }}-${{ hashFiles('package-lock.json', 'app.config.js', 'assets/**') }}
+          path: |
+            android
+            node_modules/**/android/build
+            node_modules/**/android/.cxx
+
       - run: node receipt.test.mjs
 
       # The app's updater compares this version with the latest release tag.
@@ -38,7 +55,12 @@ jobs:
 
       # Phones only need the two ARM builds; x86/x86_64 run only on emulators, and each extra ABI recompiles all native code.
       - name: Build APK
-        run: ./gradlew assembleRelease --build-cache -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+        # R8 shrinking took ~2.5 min per build; a sideloaded APK doesn't need it.
+        run: >-
+          ./gradlew assembleRelease --build-cache
+          -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+          -Pandroid.enableMinifyInReleaseBuilds=false
+          -Pandroid.enableShrinkResourcesInReleaseBuilds=false
         working-directory: android
 
       # Re-sign with our own key so every release installs over the previous one.
