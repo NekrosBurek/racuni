@@ -9,7 +9,7 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Print from 'expo-print';
 import { File, Paths } from 'expo-file-system';
 import {
-  parseReceiptUrl, extractJournal, shopName, placeName, journalItems, specificationRequest, specificationItems,
+  parseReceiptUrl, extractJournal, receiptHeader, journalItems, specificationRequest, specificationItems,
   fileName, DEFAULT_FORMAT, FORMAT_TOKENS,
 } from './receipt';
 import { findSettings, listFolders, saveSettings, findReceipt, uploadPdf } from './drive';
@@ -20,6 +20,7 @@ import PaperScan, { deleteFile } from './PaperScan';
 import ReceiptList, { useReceipts } from './screens/ReceiptList';
 import Stats from './screens/Stats';
 import Intro from './screens/Intro';
+import RenameExisting from './screens/Rename';
 import { introDone, setIntroDone } from './prefs';
 
 const TABS = [['scan', '📷', 'Skeniraj'], ['list', '🧾', 'Računi'], ['stats', '📊', 'Pregled'], ['settings', '⚙️', 'Podešavanja']];
@@ -123,7 +124,7 @@ async function saveReceipt(token, settings, r) {
   // Receipts verified through the no-QR form arrive with the page already loaded.
   const html = r.html ?? await (await fetch(r.url)).text();
   const journal = extractJournal(html);
-  const receipt = { ...r, shop: shopName(journal), place: placeName(journal), items: await receiptItems(html, journal) };
+  const receipt = { ...r, ...receiptHeader(html, journal), items: await receiptItems(html, journal) };
   const pdf = await Print.printToFileAsync({
     html: `<html><head><meta charset="utf-8"></head><body style="display:flex;justify-content:center">${journal}</body></html>`,
     base64: true,
@@ -370,6 +371,7 @@ function Onboarding({ token, current, onFail, onDone, onCancel, onLogout, onShow
         <Text style={styles.primaryText}>{saving ? 'Čuvam…' : 'Sačuvaj'}</Text>
       </Pressable>
       {onCancel && <Button title="Odustani" color="#888" onPress={onCancel} />}
+      {current && <RenameExisting token={token} folder={current.folder} format={nameFormat} onFail={onFail} />}
       {onShowIntro && <Button title="Prikaži uvod ponovo" color="#888" onPress={onShowIntro} />}
       <Button title="Odjavi se" color="#c62828" onPress={onLogout} />
       <Text style={[styles.hint, { textAlign: 'center', marginTop: 8 }]}>Verzija {VERSION}</Text>

@@ -287,6 +287,23 @@ const bare = runForm(`<div><div>Износ <input class="x"></div><div>Врем�
 const ins = [...bare.doc.querySelectorAll('input')].map(i => i.value);
 assert.deepEqual(ins, ['4400,00', '2026-02-17T10:49', 'DFY7QVSV-DFY7QVSV-27982', '26915/27982ПП']);
 
+// Renaming to the current format: from stored data, or from the PDF's journal text for older files.
+const { renamePlan, dataFromText } = await import('./rename.js');
+const stored = receiptInfo({ id: 'r1', name: 'Termostat.pdf', appProperties: { total: '4400', date: '2025-12-20T08:57:16.000Z', shop: 'AUTO KRALJEVO', invoiceNumber: 'DFY7QVSV-DFY7QVSV-27982' },
+  description: JSON.stringify({ racuni: 1, place: 'AUTO KRALJEVO DOO KRALJEVO', items: [{ n: 'SS25486-AMC VILJUSKA DESNA_24495 /kom', t: 2700 }, { n: 'D2F003TT TERMOSTAT_24501 /kom', t: 1700 }] }) });
+assert.equal(stored.items.length, 2);
+const planned = renamePlan([stored, receiptInfo({ id: 'r2', name: 'nesto.pdf' })], DEFAULT_FORMAT);
+assert.equal(planned.length, 1); // r2 has neither a date nor a shop: left alone
+assert.equal(planned[0].to, `${stored.date.getFullYear()}-12-20_AutoKraljevo_Viljuska_Desna_i_Termostat.pdf`);
+assert.equal(renamePlan([{ ...stored, name: planned[0].to.replace('.pdf', '') }], DEFAULT_FORMAT).length, 0);
+const fromText = dataFromText(journal);
+assert.equal(fromText.shop, 'CRAFTER doo');
+assert.equal(fromText.items.length, 2);
+// The page header gives the shop even when the journal doesn't have it.
+const { receiptHeader } = await import('./receipt.js');
+assert.deepEqual(receiptHeader('<div><label>Предузеће:</label><span>LESNINA S</span><label>Место продаје:</label><span>Maloprodaja&nbsp;MOMAX B3</span></div><pre>bez zaglavlja</pre>', '<pre>bez zaglavlja</pre>'),
+  { shop: 'LESNINA S', place: 'Maloprodaja MOMAX B3' });
+
 assert.throws(() => parseReceiptUrl('https://example.com/?vl=abc'), /nije QR/);
 assert.throws(() => parseReceiptUrl('hello'), /nije link/);
 assert.equal(extractJournal('<div><pre class="x">RAČUN</pre></div>'), '<pre class="x">RAČUN</pre>');

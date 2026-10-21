@@ -36,7 +36,7 @@ export function extractJournal(html) {
   return m[0];
 }
 
-const decode = s => s.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+const decode = s => s.replace(/&nbsp;|&#160;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
 const journalLines = journal => decode(journal.replace(/<[^>]*>/g, '\n')).split('\n').map(l => l.trim()).filter(Boolean);
 
 // "Предузеће: CRAFTER doo" style header lines; the label may also sit alone with the value on the next line.
@@ -57,6 +57,16 @@ export function shopName(journal) {
 }
 
 export const placeName = journal => headerValue(journalLines(journal), /^(Место продаје|Mesto prodaje)\s*:?/i);
+
+// The verification page prints "Предузеће: …" and "Место продаје: …" above the receipt itself; that header is
+// tried first, the journal's own header second.
+export function receiptHeader(html, journal) {
+  const page = html.replace(/<(script|style)[\s\S]*?<\/\1>/gi, '').replace(/<pre[\s\S]*?<\/pre>/gi, '');
+  return {
+    shop: shopName(page) || shopName(journal),
+    place: placeName(page) || placeName(journal),
+  };
+}
 
 const amount = s => Number(s.replace(/\./g, '').replace(',', '.'));
 const ITEM_NUMBERS = /^(.*?)\s*(-?[\d.]+,\d{2})\s+(-?[\d.,]+)\s+(-?[\d.]+,\d{2})$/;

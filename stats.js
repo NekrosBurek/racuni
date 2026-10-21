@@ -4,8 +4,26 @@
 
 const MONTHS = ['januar', 'februar', 'mart', 'april', 'maj', 'jun', 'jul', 'avgust', 'septembar', 'oktobar', 'novembar', 'decembar'];
 
+// What the file name is built from, kept in the Drive file's description (appProperties allow only ~120 bytes),
+// so names can be rebuilt later without scanning again.
+export function receiptDescription(r) {
+  const items = (r.items ?? []).slice(0, 60).map(i => ({ n: String(i.name).slice(0, 80), t: i.total }));
+  return JSON.stringify({ racuni: 1, place: r.place || '', items });
+}
+
+function readDescription(text) {
+  try {
+    const d = JSON.parse(text);
+    if (d?.racuni !== 1) return null;
+    return { place: d.place || '', items: (d.items || []).map(i => ({ name: i.n, total: i.t })) };
+  } catch {
+    return null;
+  }
+}
+
 export function receiptInfo(file) {
   const p = file.appProperties ?? {};
+  const described = file.description ? readDescription(file.description) : null;
   const base = file.name.replace(/\.pdf$/i, '');
   const named = base.match(/^(\d{4})-(\d{2})-(\d{2})[_ ]+([^_ ]+)?/);
   let date = p.date ? new Date(p.date) : null;
@@ -20,6 +38,8 @@ export function receiptInfo(file) {
     total,
     date,
     invoiceNumber: p.invoiceNumber || null,
+    place: described?.place ?? '',
+    items: described?.items ?? null, // null: not stored (older file), [] would mean none
     link: file.webViewLink,
     // Saved by this app: has the data that duplicates and totals rely on.
     complete: !!p.invoiceNumber && total !== null,
