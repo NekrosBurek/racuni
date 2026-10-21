@@ -1,6 +1,6 @@
 // Builds the "{radnja}" and "{stavke}" parts of a file name from the receipt's shop and items, with plain rules:
-//   1-2 items          -> the item names:            ViljuskaDesna_i_Termostat
-//   a branded device   -> brand + device:            BoschInverterKlime
+//   1-2 items          -> the item names:            Viljuska_Desna_i_Termostat
+//   a branded device   -> brand + device:            Bosch_Inverter_Klime
 //   more items         -> categories by amount:      Rasveta_Jastuci_i_Posteljina, Uticnice_Maske_i_Ostalo
 
 const LATIN = {
@@ -14,7 +14,9 @@ export function plain(text) {
   return [...text.toUpperCase()].map(c => LATIN[c] ?? c).join('').normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
 
-const camel = words => words.map(w => w.charAt(0) + w.slice(1).toLowerCase()).join('');
+const cap = w => w.charAt(0) + w.slice(1).toLowerCase();
+const camel = words => words.map(cap).join(''); // shop: AutoKraljevo
+const snake = words => words.map(cap).join('_'); // items: Garnitura_Sa_Lenjivcem
 
 const LEGAL_FORMS = new Set(['DOO', 'D.O.O.', 'D.O.O', 'AD', 'A.D.', 'A.D', 'PR', 'SZR', 'STR', 'SZTR', 'TR', 'OD', 'DOOEL', 'KD', 'ORTACKO']);
 // Chains whose receipts name the owner company, but the store is what people search for.
@@ -66,8 +68,8 @@ export function itemWords(name) {
 function itemTag(item, max = 3) {
   const words = itemWords(item.name);
   const brand = words.find(w => BRANDS.includes(w));
-  if (brand) return camel([brand, ...words.filter(w => w !== brand).slice(0, 4)]);
-  return camel(words.slice(0, max));
+  if (brand) return snake([brand, ...words.filter(w => w !== brand).slice(0, 4)]);
+  return snake(words.slice(0, max));
 }
 
 // First matching stem wins, so more specific stems come first.
@@ -81,17 +83,17 @@ const CATEGORIES = [
   ['Posteljina', ['POSTELJ', 'CARSAV', 'NAVLAK', 'PREKRIVAC', 'CEBE', 'JORGAN', 'POKRIVAC']],
   ['Tekstil', ['PESKIR', 'ZAVES', 'TEPIH', 'STOLNJAK', 'PODMETAC']],
   ['Namestaj', ['STO', 'STOLIC', 'FOTELJ', 'KREVET', 'ORMAR', 'KOMODA', 'POLICA', 'DUSEK', 'TROSED', 'KAUC']],
-  ['KucnaHemija', ['CISTAC', 'OSVEZIVAC', 'DETERDZENT', 'OMEKSIVAC', 'SREDSTVO', 'DEZINFEK', 'IZBELJIVAC', 'SPUZV', 'KRPA']],
+  ['Kucna_Hemija', ['CISTAC', 'OSVEZIVAC', 'DETERDZENT', 'OMEKSIVAC', 'SREDSTVO', 'DEZINFEK', 'IZBELJIVAC', 'SPUZV', 'KRPA']],
   ['Kozmetika', ['SAMPON', 'SAPUN', 'KREMA', 'GEL', 'PASTA', 'DEZODORANS', 'PARFEM', 'BRIJAC', 'PELENE', 'MARAMIC']],
-  ['AutoDelovi', ['VILJUSK', 'TERMOSTAT', 'AMORTIZER', 'PAKNE', 'PLOCIC', 'KAIS', 'SVECIC', 'AKUMULATOR', 'METLIC', 'HLADNJAK', 'SPONA', 'LEZAJ', 'KVACIL', 'AUSPUH', 'FILTER']],
+  ['Auto_Delovi', ['VILJUSK', 'TERMOSTAT', 'AMORTIZER', 'PAKNE', 'PLOCIC', 'KAIS', 'SVECIC', 'AKUMULATOR', 'METLIC', 'HLADNJAK', 'SPONA', 'LEZAJ', 'KVACIL', 'AUSPUH', 'FILTER']],
   ['Alat', ['BUSILIC', 'SRAFCIGER', 'BURGIJ', 'CEKIC', 'KLESTA', 'KLJUC', 'TESTER', 'BRUSILIC', 'METAR', 'NOZ']],
   ['Gradjevina', ['LEPAK', 'MALTER', 'CEMENT', 'SILIKON', 'BOJA', 'FASAD', 'GIPS', 'GLET', 'PENA', 'TIPL', 'SRAF', 'EKSER', 'CEV']],
-  ['BelaTehnika', ['FRIZIDER', 'ZAMRZIVAC', 'SPORET', 'RERNA', 'MASIN', 'SUSILIC', 'BOJLER', 'KLIM', 'USISIVAC', 'MIKROTALAS', 'APARAT']],
+  ['Bela_Tehnika', ['FRIZIDER', 'ZAMRZIVAC', 'SPORET', 'RERNA', 'MASIN', 'SUSILIC', 'BOJLER', 'KLIM', 'USISIVAC', 'MIKROTALAS', 'APARAT']],
   ['Elektronika', ['TELEVIZOR', 'LAPTOP', 'RACUNAR', 'MONITOR', 'TELEFON', 'TABLET', 'SLUSALIC', 'PUNJAC', 'MIS', 'TASTATUR', 'ZVUCNIK']],
   ['Mlecni', ['MLEKO', 'JOGURT', 'SIR', 'KAJMAK', 'PAVLAK', 'KEFIR', 'MASLAC', 'MILERAM']],
   ['Meso', ['MESO', 'PILE', 'PILETIN', 'SVINJ', 'JUNET', 'KOBASIC', 'SUNKA', 'SALAM', 'PRSUT', 'SLANIN', 'PECENIC', 'VIRSL', 'MLEVENO']],
   ['Pekara', ['HLEB', 'KIFL', 'PECIV', 'BUREK', 'PEREC', 'LEPINJ', 'TOST']],
-  ['VoceIPovrce', ['JABUK', 'BANAN', 'KROMPIR', 'LUK', 'PARADAJZ', 'KRASTAVAC', 'PAPRIK', 'LIMUN', 'POMORANDZ', 'KUPUS', 'SARGAREP', 'GROZD']],
+  ['Voce_i_Povrce', ['JABUK', 'BANAN', 'KROMPIR', 'LUK', 'PARADAJZ', 'KRASTAVAC', 'PAPRIK', 'LIMUN', 'POMORANDZ', 'KUPUS', 'SARGAREP', 'GROZD']],
   ['Pice', ['VODA', 'SOK', 'PIVO', 'VINO', 'RAKIJ', 'KAFA', 'CAJ', 'COCA', 'PEPSI', 'NEKTAR']],
   ['Namirnice', ['BRASNO', 'SECER', 'SO', 'ULJE', 'PIRINAC', 'TESTENIN', 'JAJA', 'JAJE', 'COKOLAD', 'KEKS', 'GRICKALIC', 'CIPS', 'SMOKI', 'KONZERV']],
   ['Odeca', ['MAJIC', 'PANTALON', 'JAKN', 'CARAP', 'DUKSERIC', 'KOSULJ', 'HALJIN', 'SUKNJ', 'DONJI', 'GACE']],
@@ -128,7 +130,7 @@ export function itemsTag(items) {
 
   const groups = new Map();
   for (const d of distinct) {
-    const label = category(d.item) ?? camel(itemWords(d.item.name).slice(0, 1));
+    const label = category(d.item) ?? snake(itemWords(d.item.name).slice(0, 1));
     groups.set(label, (groups.get(label) ?? 0) + d.total);
   }
   const ranked = [...groups.entries()].sort((a, b) => b[1] - a[1]).map(([label]) => label);

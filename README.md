@@ -7,8 +7,8 @@ Skeniraš QR kodove fiskalnih računa jedan za drugim, a aplikacija svaki sačuv
 ## Kako radi
 - **Onboarding:** poveži Google nalog, izaberi folder (ili napravi novi) i format imena fajla, podrazumevano `{datum}_{radnja}_{stavke}`.
 - **Ime fajla:** `{radnja}` je naziv radnje spojeno (`AutoKraljevo`, `TelekomSrbija`, za lance mesto prodaje: `Momax`). `{stavke}` se pravi pravilima iz artikala na računu, bez AI-a:
-  - 1–2 artikla: nazivi artikala, npr. `ViljuskaDesna_i_Termostat`;
-  - uređaj poznatog brenda koji čini bar pola računa: brend + uređaj, npr. `BoschInverterKlime`;
+  - 1–2 artikla: nazivi artikala, npr. `Viljuska_Desna_i_Termostat`;
+  - uređaj poznatog brenda koji čini bar pola računa: brend + uređaj, npr. `Bosch_Inverter_Klime`;
   - više artikala: kategorije sortirane po iznosu, npr. `Rasveta_Jastuci_i_Posteljina`; preko 3 kategorije, dve najveće i `Ostalo` (`Meso_Mlecni_i_Ostalo` za veliku kupovinu u marketu).
   Šifre, modeli, količine i jedinice se izbacuju. Spisak kategorija i brendova je u `naming.js` i lako se dopunjuje. Ostala polja: `{prodavac}` (puni naziv), `{iznos}`, `{vreme}`, `{broj}`.
 - **Skeniranje:** kamera radi stalno. Svaki novi QR se odmah stavi u red i čuva u pozadini, a ti nastavljaš sa sledećim računom.

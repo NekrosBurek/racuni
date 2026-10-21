@@ -48,7 +48,7 @@ const it = (name, total) => ({ name, total });
 const name = (shop, items, d = '2026-10-19') => fileName(DEFAULT_FORMAT, { ...r, date: new Date(`${d}T12:00:00`), ...shop, items });
 assert.equal(name({ shop: 'AUTO KRALJEVO', place: 'AUTO KRALJEVO DOO KRALJEVO' }, [
   it('SS25486-AMC VILJUSKA DESNA_24495 /kom', 2700), it('D2F003TT TERMOSTAT_24501 /kom', 1700),
-], '2025-12-20'), '2025-12-20_AutoKraljevo_ViljuskaDesna_i_Termostat.pdf');
+], '2025-12-20'), '2025-12-20_AutoKraljevo_Viljuska_Desna_i_Termostat.pdf');
 assert.equal(name({ shop: 'CRAFTER doo', place: 'МП 01 ЗМАЈ' }, [
   it('030101225 4M MASKA CRNA', 1058), it('030101237 4M PRIRUBNICA', 318), it('030101148 2M CRNA ŠUHO PRIKLJUČNICA II+DZ', 1538),
   it('030101164 1M POKLOPAC MEHANIZMA CRNI', 149), it('030101146 1M CRNA ŠUHO PRIKLJUČNICA II+DZ', 499),
@@ -60,14 +60,16 @@ assert.equal(name({ shop: 'LESNINA S', place: 'Maloprodaja MOMAX B3' }, [
   it('7370000102 POSTELJINA', 466.44), it('82271606 LED PLAFONJERA', 8394.96),
 ], '2025-07-18'), '2025-07-18_Momax_Rasveta_Jastuci_i_Posteljina.pdf');
 assert.equal(name({ shop: 'Telekom Srbija a.d. Beograd,' }, [it('1182520 BOSCH Inverter klime CL3000iU W 35 E', 45998.6)], '2026-10-21'),
-  '2026-10-21_TelekomSrbija_BoschInverterKlime.pdf');
+  '2026-10-21_TelekomSrbija_Bosch_Inverter_Klime.pdf');
 assert.equal(name({ shop: 'Telekom Srbija a.d. Beograd,' }, [it('1204155 BEKO Mašine za pranje veša B3WFU48215WW ES', 40998.9)], '2026-09-09'),
-  '2026-09-09_TelekomSrbija_BekoMasineZaPranjeVesa.pdf');
+  '2026-09-09_TelekomSrbija_Beko_Masine_Za_Pranje_Vesa.pdf');
 // 30+ items: the biggest categories by amount, the rest as "Ostalo".
 const groceries = Array.from({ length: 34 }, (_, k) => it(['MLEKO 1L', 'HLEB BELI', 'PILECI FILE', 'SAMPON 400ML'][k % 4], [300, 80, 900, 50][k % 4]));
+assert.equal(itemsTag([it('1234 GARNITURA SA LENJIVCEM', 89990)]), 'Garnitura_Sa_Lenjivcem');
+assert.equal(itemsTag([it('DETERDZENT', 900), it('OSVEZIVAC', 300), it('SAMPON', 200), it('KREMA', 100), it('HLEB', 50)]), 'Kucna_Hemija_Kozmetika_i_Pekara');
 assert.equal(itemsTag(groceries), 'Meso_Mlecni_i_Ostalo');
 // A branded device that is most of a bigger bill still names it.
-assert.equal(itemsTag([it('BOSCH UDARNA BUSILICA GSB13-2RE', 9000), it('BURGIJA 6MM', 300), it('TIPLE 8MM', 100)]), 'BoschUdarnaBusilica_i_Ostalo');
+assert.equal(itemsTag([it('BOSCH UDARNA BUSILICA GSB13-2RE', 9000), it('BURGIJA 6MM', 300), it('TIPLE 8MM', 100)]), 'Bosch_Udarna_Busilica_i_Ostalo');
 assert.equal(itemsTag([]), '');
 assert.equal(name({ shop: 'CRAFTER doo' }, []), '2026-10-19_Crafter.pdf');
 assert.equal(shopTag({ company: 'ТЕЛЕКОМ СРБИЈА А.Д. БЕОГРАД' }), 'TelekomSrbija');
