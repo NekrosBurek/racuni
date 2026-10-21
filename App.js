@@ -8,7 +8,10 @@ import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import * as Print from 'expo-print';
 import { File, Paths } from 'expo-file-system';
-import { parseReceiptUrl, extractJournal, shopName, fileName, DEFAULT_FORMAT, FORMAT_TOKENS } from './receipt';
+import {
+  parseReceiptUrl, extractJournal, shopName, placeName, journalItems, specificationRequest, specificationItems,
+  fileName, DEFAULT_FORMAT, FORMAT_TOKENS,
+} from './receipt';
 import { findSettings, listFolders, saveSettings, findReceipt, listReceipts, uploadPdf } from './drive';
 import { REPO, APK_URL, VERSION, isNewer } from './version';
 
@@ -84,11 +87,31 @@ function useUpdates() {
   return downloading;
 }
 
+// The exact item list from the verification site; the printed journal is the fallback.
+async function receiptItems(html, journal) {
+  const request = specificationRequest(html);
+  if (request) {
+    try {
+      const res = await fetch('https://suf.purs.gov.rs/specifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `invoiceNumber=${encodeURIComponent(request.invoiceNumber)}&token=${encodeURIComponent(request.token)}`,
+      });
+      const items = res.ok ? specificationItems(await res.json()) : [];
+      if (items.length) return items;
+    } catch {
+      // fall through to the journal
+    }
+  }
+  return journalItems(journal);
+}
+
 async function saveReceipt(token, settings, r) {
   const existing = await findReceipt(token, r.invoiceNumber);
   if (existing) throw Object.assign(new Error(`Već postoji: ${existing.name}`), { duplicate: true });
-  const journal = extractJournal(await (await fetch(r.url)).text());
-  const receipt = { ...r, shop: shopName(journal) };
+  const html = await (await fetch(r.url)).text();
+  const journal = extractJournal(html);
+  const receipt = { ...r, shop: shopName(journal), place: placeName(journal), items: await receiptItems(html, journal) };
   const pdf = await Print.printToFileAsync({
     html: `<html><head><meta charset="utf-8"></head><body style="display:flex;justify-content:center">${journal}</body></html>`,
     base64: true,
@@ -199,7 +222,8 @@ function Onboarding({ token, current, onFail, onDone, onCancel }) {
   useEffect(() => { listFolders(token).then(setFolders, onFail); }, [token, onFail]);
 
   const example = fileName(nameFormat, {
-    date: new Date(), total: 1234.5, shop: 'MAXI 123', invoiceNumber: 'ABCD1234-ABCD1234-42',
+    date: new Date(), total: 4400, shop: 'AUTO KRALJEVO', invoiceNumber: 'ABCD1234-ABCD1234-42',
+    items: [{ name: 'VILJUSKA DESNA', total: 2700 }, { name: 'TERMOSTAT', total: 1700 }],
   });
   const canSave = (folder || newFolderName.trim()) && nameFormat.trim() && !saving;
 
@@ -244,6 +268,9 @@ function Onboarding({ token, current, onFail, onDone, onCancel }) {
       <TextInput style={styles.input} value={nameFormat} onChangeText={setNameFormat} autoCapitalize="none" />
       <Text style={styles.hint}>Polja: {FORMAT_TOKENS}</Text>
       <Text style={styles.hint}>Primer: {example}</Text>
+      {nameFormat !== DEFAULT_FORMAT && (
+        <Button title="Standardni format (datum_radnja_stavke)" color="#888" onPress={() => setNameFormat(DEFAULT_FORMAT)} />
+      )}
 
       <Button title={saving ? 'Čuvam…' : 'Sačuvaj'} disabled={!canSave} onPress={save} />
       {onCancel && <Button title="Odustani" color="#888" onPress={onCancel} />}
