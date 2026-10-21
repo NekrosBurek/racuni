@@ -52,7 +52,7 @@ export async function findReceipt(token, invoiceNumber) {
 
 export const listReceipts = (token, folderId) =>
   search(token, `'${q(folderId)}' in parents and mimeType='application/pdf' and trashed=false`,
-    'id,name,webViewLink,appProperties', '&orderBy=createdTime desc&pageSize=500');
+    'id,name,webViewLink,appProperties,createdTime', '&orderBy=createdTime desc&pageSize=1000');
 
 export function uploadPdf(token, folderId, name, r, base64) {
   const boundary = 'racuni' + Date.now();
@@ -68,6 +68,44 @@ export function uploadPdf(token, folderId, name, r, base64) {
     `--${boundary}\r\nContent-Type: application/pdf\r\nContent-Transfer-Encoding: base64\r\n\r\n${base64}\r\n` +
     `--${boundary}--`;
   return call(token, 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name', {
+    method: 'POST',
+    headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+    body,
+  });
+}
+
+// Moves a receipt to the Drive trash, so a mistaken delete can still be undone from Drive.
+export const trashReceipt = (token, id) => patch(token, id, { trashed: true });
+
+export const setReceiptData = (token, id, appProperties) => patch(token, id, { appProperties });
+
+export const mediaUrl = id => `${API}/${id}?alt=media`;
+
+// The PDF's text, extracted by Drive: a temporary Google Docs copy (Drive reads the PDF, with OCR where needed),
+// exported as plain text and deleted again.
+export async function pdfText(token, id) {
+  const doc = await call(token, `${API}/${id}/copy?fields=id`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'racuni-tmp-ocr', mimeType: 'application/vnd.google-apps.document' }),
+  });
+  try {
+    const res = await fetch(`${API}/${doc.id}/export?mimeType=text/plain`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error(`Google Drive greška ${res.status}`);
+    return await res.text();
+  } finally {
+    await fetch(`${API}/${doc.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+  }
+}
+
+// A CSV (or any text) file in the receipts folder.
+export function uploadText(token, folderId, name, mimeType, text) {
+  const boundary = 'racuni' + Date.now();
+  const body =
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name, parents: [folderId], mimeType })}\r\n` +
+    `--${boundary}\r\nContent-Type: ${mimeType}; charset=UTF-8\r\n\r\n${text}\r\n` +
+    `--${boundary}--`;
+  return call(token, 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink', {
     method: 'POST',
     headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
     body,
