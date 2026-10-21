@@ -1,14 +1,34 @@
 // Reads a printed fiscal receipt from on-device OCR (Latin script only: Cyrillic labels come out garbled, so
-// fields are found by their shape, not by their labels). Each camera frame is parsed on its own and merged.
+// fields are found by their shape, not by their labels). Each scanned page is parsed on its own and merged.
+// OCR is loose with punctuation, so "4.400,00" may come back as "4,400,00", "4.400.00" or "4.400, 00".
 
-const MONEY = /-?\d{1,3}(?:\.\d{3})*,\d{2}/g;
-const INVOICE = /([A-Z0-9]{8})\s*-\s*([A-Z0-9]{8})\s*-\s*(\d{1,10})/;
-const DATE = /(\d{1,2})\.(\d{1,2})\.(\d{4})\.?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?/;
-const ITEM_NUMBERS = /^(.*?)\s*(-?\d{1,3}(?:\.\d{3})*,\d{2})\s+(-?[\d.,]+)\s+(-?\d{1,3}(?:\.\d{3})*,\d{2})$/;
+const M = String.raw`\d{1,3}(?:[.,]\d{3})*[.,]\s?\d{2}(?!\d)`;
+const MONEY = new RegExp(`-?${M}`, 'g');
+const DASH = '\\s*[-\u2013\u2014]\\s*';
+const INVOICE = new RegExp(`([A-Z0-9]{8})${DASH}([A-Z0-9]{8})${DASH}([0-9OI]{1,10})(?![A-Z0-9])`);
+const DATE = /(\d{1,2})\s*[.,]\s*(\d{1,2})\s*[.,]\s*(20\d{2})\.?(?:\s*[.,]?\s*(\d{1,2})\s*[:.]\s*(\d{2})(?:\s*[:.]\s*(\d{2}))?)?/;
+const ITEM_NUMBERS = new RegExp(`^(.*?)\\s*(-?${M})\\s+(-?\\d+(?:[.,]\\d{1,3})?)\\s+(-?${M})$`);
 const SEPARATOR = /^[-=_.\s]{5,}$/;
 const TAX_LABEL = /\([^)]{1,3}\)\s*$/;
 
-const amount = s => Number(s.replace(/\./g, '').replace(',', '.'));
+// The last separator before exactly two digits is the decimal point; any other is a thousands separator.
+export function amount(s) {
+  const m = s.replace(/\s/g, '').match(/^(-?)([\d.,]*?)[.,]?(\d{2})$/);
+  if (!m) return Number(s.replace(/[.,\s]/g, ''));
+  return Number(`${m[1]}${m[2].replace(/[.,]/g, '') || '0'}.${m[3]}`);
+}
+
+// A date only counts if it is plausible for a receipt being scanned now.
+function readDate(row) {
+  const d = row.match(DATE);
+  if (!d) return null;
+  const [day, month, year] = [+d[1], +d[2], +d[3]];
+  const thisYear = new Date().getFullYear();
+  if (month < 1 || month > 12 || day < 1 || day > 31 || year < thisYear - 3 || year > thisYear + 1) return null;
+  const hasTime = d[4] !== undefined && +d[4] < 24 && +d[5] < 60;
+  const date = hasTime ? new Date(year, month - 1, day, +d[4], +d[5], +(d[6] ?? 0)) : new Date(year, month - 1, day, 12);
+  return isNaN(date) ? null : { date, hasTime };
+}
 const afterLabel = row => row.replace(/^[^:]{1,25}:\s*/, '').trim();
 
 // OCR returns lines with boxes; lines whose vertical centres are close belong to the same printed row.
@@ -58,13 +78,17 @@ export function parsePaper(rows) {
     if (name) out.items.push({ name, quantity: amount(m[3]), total: amount(m[4]) });
   });
 
+  let dateHasTime = false;
   for (const row of rows) {
     const inv = row.toUpperCase().match(INVOICE);
-    if (inv && !out.invoiceNumber) out.invoiceNumber = `${inv[1]}-${inv[2]}-${Number(inv[3])}`;
-    const d = row.match(DATE);
-    if (d) {
-      const date = new Date(+d[3], +d[2] - 1, +d[1], +d[4], +d[5], +(d[6] ?? 0));
-      if (!isNaN(date)) out.date = date; // the last one is the PFR time, printed after the ESIR time
+    if (inv && !out.invoiceNumber) {
+      out.invoiceNumber = `${inv[1]}-${inv[2]}-${Number(inv[3].replace(/O/g, '0').replace(/I/g, '1'))}`;
+    }
+    // A date with a time wins (the PFR time); among those the last, as the PFR time follows the ESIR time.
+    const d = readDate(row);
+    if (d && (d.hasTime || !dateHasTime)) {
+      out.date = d.date;
+      dateHasTime = d.hasTime;
     }
   }
 
@@ -76,8 +100,8 @@ export function parsePaper(rows) {
     out.place = afterLabel(header[pib + 2] ?? '');
   }
 
-  // Total: the first single amount after the items ("Укупан износ"); without items, the largest amount
-  // printed at least twice (total and card payment), else the largest.
+  // Total: the first single amount after the items ("Укупан износ"); else the printed amount equal to the
+  // items' sum; else the largest amount printed at least twice (total and card payment), else the largest.
   if (firstItem >= 0) {
     const lastItem = rows.reduce((last, r, i) => (isItemRow(r) ? i : last), -1);
     for (const row of rows.slice(lastItem + 1)) {
@@ -85,8 +109,13 @@ export function parsePaper(rows) {
       if (amounts?.length === 1) { out.total = amount(amounts[0]); out.totalSure = true; break; }
     }
   }
+  const all = rows.flatMap(r => r.match(MONEY) ?? []).map(amount);
+  if (out.total === null && out.items.length) {
+    const sum = Math.round(out.items.reduce((s, i) => s + i.total, 0) * 100) / 100;
+    const printed = rows.filter(r => !isItemRow(r)).flatMap(r => r.match(MONEY) ?? []).map(amount);
+    if (printed.some(a => Math.abs(a - sum) < 0.005)) { out.total = sum; out.totalSure = true; }
+  }
   if (out.total === null) {
-    const all = rows.flatMap(r => r.match(MONEY) ?? []).map(amount);
     const repeated = all.filter((a, i) => all.indexOf(a) !== i);
     const pool = repeated.length ? repeated : all;
     if (pool.length) out.total = Math.max(...pool);
