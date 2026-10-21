@@ -16,7 +16,7 @@ Skeniraš QR kodove fiskalnih računa jedan za drugim, a aplikacija svaki sačuv
 - **Računi:** lista PDF-ova iz foldera sa ukupnim iznosom. Dodir otvara račun.
 - **Ažuriranje:** pri pokretanju i pri povratku u aplikaciju (najviše jednom na sat) proveri GitHub Releases. Ako ima novija verzija, na „Preuzmi" je sama skine i otvori Android instalaciju. Prvi put Android traži dozvolu da Računi instalira aplikacije.
 
-Na telefonu se ništa ne čuva. Folder i format imena upisani su u skrivena polja samog foldera na Drive-u. Prijava traje dok je aplikacija otvorena.
+Folder i format imena upisani su u skrivena polja samog foldera na Drive-u. Na telefonu se čuva samo Google prijava (refresh token, šifrovan u Android Keystore-u), pa se ne loguješ pri svakom paljenju. **Odjavi se** u podešavanjima (⚙) briše je i opoziva pristup.
 
 ## Podešavanje Google prijave (jednom)
 1. Otvori https://console.cloud.google.com, napravi projekat i uključi **Google Drive API**.
