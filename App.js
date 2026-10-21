@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, AppState, Button, FlatList, Linking, Platform, Pressable, StatusBar, StyleSheet, Text, TextInput, Vibration, View,
+  ActivityIndicator, Alert, AppState, BackHandler, Button, FlatList, Linking, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, Vibration, View,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -12,11 +12,17 @@ import {
   parseReceiptUrl, extractJournal, shopName, placeName, journalItems, specificationRequest, specificationItems,
   fileName, DEFAULT_FORMAT, FORMAT_TOKENS,
 } from './receipt';
-import { findSettings, listFolders, saveSettings, findReceipt, listReceipts, uploadPdf } from './drive';
+import { findSettings, listFolders, saveSettings, findReceipt, uploadPdf } from './drive';
 import { REPO, APK_URL, VERSION, isNewer } from './version';
 import { saveLogin, restoreLogin, logout } from './auth';
 import { isAvailable as ocrAvailable } from './modules/text-scanner';
 import PaperScan, { deleteFile } from './PaperScan';
+import ReceiptList, { useReceipts } from './screens/ReceiptList';
+import Stats from './screens/Stats';
+import Intro from './screens/Intro';
+import { introDone, setIntroDone } from './prefs';
+
+const TABS = [['scan', '📷', 'Skeniraj'], ['list', '🧾', 'Računi'], ['stats', '📊', 'Pregled'], ['settings', '⚙️', 'Podešavanja']];
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -137,8 +143,8 @@ export default function App() {
   const tokenRef = useRef(null);
   tokenRef.current = token;
   const [settings, setSettings] = useState(undefined); // undefined = loading, null = onboarding needed
-  const [editing, setEditing] = useState(false);
   const [tab, setTab] = useState('scan');
+  const [intro, setIntro] = useState(null); // null = loading, true = show the walkthrough
   const [error, setError] = useState(null);
   const [request, response, promptAsync] = Google.useAuthRequest({
     androidClientId: ANDROID_CLIENT_ID,
@@ -147,6 +153,19 @@ export default function App() {
   });
 
   const downloading = useUpdates();
+
+  useEffect(() => { introDone().then(done => setIntro(!done)); }, []);
+  const finishIntro = useCallback(() => { setIntroDone(true); setIntro(false); }, []);
+
+  // Android back: from any tab to the scanner, then out of the app. Screens on top (viewer, paper scan) handle it first.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (tab === 'scan') return false;
+      setTab('scan');
+      return true;
+    });
+    return () => sub.remove();
+  }, [tab]);
 
   useEffect(() => {
     if (response?.type === 'success') saveLogin(response.authentication).then(setSession, e => setError(e.message));
@@ -186,7 +205,7 @@ export default function App() {
     await logout();
     setSession(null);
     setSettings(undefined);
-    setEditing(false);
+    setTab('scan');
   }, []);
 
   // Keyed on being signed in, not on the token, so an hourly renewal doesn't reload the screen.
@@ -197,45 +216,39 @@ export default function App() {
   }, [signedIn, fail]);
 
   let screen;
-  if (restoring) {
+  if (restoring || intro === null) {
     screen = <View style={styles.center}><ActivityIndicator size="large" /></View>;
+  } else if (intro) {
+    screen = <Intro onDone={finishIntro} />;
   } else if (!token) {
     screen = (
       <View style={styles.center}>
+        <Text style={styles.logo}>🧾</Text>
         <Text style={styles.title}>Računi</Text>
-        <Text style={styles.hint}>Korak 1 od 2: poveži Google nalog na kom čuvaš račune.</Text>
-        <Button title="Poveži Google nalog" disabled={!request} onPress={() => { setError(null); promptAsync(); }} />
+        <Text style={[styles.hint, { textAlign: 'center' }]}>
+          Poveži Google nalog na čijem Drive-u želiš da čuvaš račune. Aplikacija vidi samo fajlove koje sama napravi ili koje izabereš kao folder za račune.
+        </Text>
+        <Pressable style={styles.primary} disabled={!request} onPress={() => { setError(null); promptAsync(); }}>
+          <Text style={styles.primaryText}>Poveži Google nalog</Text>
+        </Pressable>
       </View>
     );
   } else if (settings === undefined) {
     screen = <View style={styles.center}><ActivityIndicator size="large" /></View>;
-  } else if (!settings || editing) {
-    screen = (
-      <Onboarding
-        token={token}
-        current={settings}
-        onFail={fail}
-        onDone={s => { setSettings(s); setEditing(false); }}
-        onCancel={settings ? () => setEditing(false) : null}
-        onLogout={signOut}
-      />
-    );
+  } else if (!settings) {
+    screen = <Onboarding token={token} current={null} onFail={fail} onDone={setSettings} onLogout={signOut} />;
   } else {
     screen = (
-      <View style={{ flex: 1 }}>
-        <View style={styles.tabs}>
-          {[['scan', 'Skeniraj'], ['list', 'Računi']].map(([key, label]) => (
-            <Pressable key={key} style={[styles.tab, tab === key && styles.tabOn]} onPress={() => setTab(key)}>
-              <Text style={[styles.tabText, tab === key && styles.tabTextOn]}>{label}</Text>
-            </Pressable>
-          ))}
-          <Pressable style={styles.tab} onPress={() => setEditing(true)}>
-            <Text style={styles.tabText}>⚙</Text>
-          </Pressable>
-        </View>
-        <Scanner token={token} settings={settings} onFail={fail} active={tab === 'scan'} />
-        {tab === 'list' && <ReceiptList token={token} settings={settings} onFail={fail} />}
-      </View>
+      <Main
+        token={token}
+        settings={settings}
+        tab={tab}
+        setTab={setTab}
+        onFail={fail}
+        onSettings={s => { setSettings(s); setTab('scan'); }}
+        onLogout={signOut}
+        onShowIntro={() => { setIntroDone(false); setIntro(true); }}
+      />
     );
   }
 
@@ -260,7 +273,40 @@ export default function App() {
   );
 }
 
-function Onboarding({ token, current, onFail, onDone, onCancel, onLogout }) {
+function Main({ token, settings, tab, setTab, onFail, onSettings, onLogout, onShowIntro }) {
+  const receipts = useReceipts(token, settings, onFail);
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={{ flex: 1 }}>
+        {/* The scanner stays mounted so its save queue keeps running on other tabs. */}
+        <Scanner token={token} settings={settings} onFail={onFail} active={tab === 'scan'} />
+        {tab === 'list' && <ReceiptList token={token} data={receipts} onFail={onFail} />}
+        {tab === 'stats' && <Stats token={token} settings={settings} data={receipts} onFail={onFail} />}
+        {tab === 'settings' && (
+          <Onboarding
+            token={token}
+            current={settings}
+            onFail={onFail}
+            onDone={onSettings}
+            onCancel={() => setTab('scan')}
+            onLogout={onLogout}
+            onShowIntro={onShowIntro}
+          />
+        )}
+      </View>
+      <View style={styles.tabBar}>
+        {TABS.map(([key, icon, label]) => (
+          <Pressable key={key} style={styles.tabItem} onPress={() => setTab(key)}>
+            <Text style={[styles.tabIcon, tab !== key && styles.tabDim]}>{icon}</Text>
+            <Text style={[styles.tabLabel, tab === key && styles.tabLabelOn]}>{label}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function Onboarding({ token, current, onFail, onDone, onCancel, onLogout, onShowIntro }) {
   const [folders, setFolders] = useState(null);
   const [folder, setFolder] = useState(current?.folder ?? null);
   const [newFolderName, setNewFolderName] = useState('');
@@ -286,23 +332,23 @@ function Onboarding({ token, current, onFail, onDone, onCancel, onLogout }) {
   }
 
   return (
-    <View style={styles.page}>
-      <Text style={styles.h2}>Korak 2 od 2: folder na Drive-u</Text>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
+      {current ? <Text style={styles.pageTitle}>Podešavanja</Text> : <Text style={styles.pageTitle}>Još jedan korak</Text>}
+      <Text style={styles.h2}>Folder na Google Drive-u</Text>
       <Text style={styles.hint}>Ovde se čuvaju skenirani računi i odavde se prikazuju.</Text>
       <View style={styles.folderBox}>
         {folders === null ? <ActivityIndicator /> : (
-          <FlatList
-            data={folders}
-            keyExtractor={f => f.id}
-            ListEmptyComponent={<Text style={styles.hint}>Nema foldera, napravi novi ispod.</Text>}
-            renderItem={({ item }) => (
+          <ScrollView nestedScrollEnabled>
+            {folders.length === 0 && <Text style={[styles.hint, { padding: 12 }]}>Nema foldera, napravi novi ispod.</Text>}
+            {folders.map(item => (
               <Pressable
+                key={item.id}
                 style={[styles.folderRow, folder?.id === item.id && styles.folderOn]}
                 onPress={() => { setFolder(item); setNewFolderName(''); }}>
                 <Text>📁 {item.name}</Text>
               </Pressable>
-            )}
-          />
+            ))}
+          </ScrollView>
         )}
       </View>
       <TextInput
@@ -320,10 +366,14 @@ function Onboarding({ token, current, onFail, onDone, onCancel, onLogout }) {
         <Button title="Standardni format (datum_radnja_stavke)" color="#888" onPress={() => setNameFormat(DEFAULT_FORMAT)} />
       )}
 
-      <Button title={saving ? 'Čuvam…' : 'Sačuvaj'} disabled={!canSave} onPress={save} />
+      <Pressable style={[styles.primary, !canSave && styles.disabled]} disabled={!canSave} onPress={save}>
+        <Text style={styles.primaryText}>{saving ? 'Čuvam…' : 'Sačuvaj'}</Text>
+      </Pressable>
       {onCancel && <Button title="Odustani" color="#888" onPress={onCancel} />}
+      {onShowIntro && <Button title="Prikaži uvod ponovo" color="#888" onPress={onShowIntro} />}
       <Button title="Odjavi se" color="#c62828" onPress={onLogout} />
-    </View>
+      <Text style={[styles.hint, { textAlign: 'center', marginTop: 8 }]}>Verzija {VERSION}</Text>
+    </ScrollView>
   );
 }
 
@@ -462,45 +512,11 @@ function Scanner({ token, settings, onFail, active }) {
   );
 }
 
-function ReceiptList({ token, settings, onFail }) {
-  const [files, setFiles] = useState(null);
-  const [loading, setLoading] = useState(false);
-
-  const load = useCallback(() => {
-    setLoading(true);
-    listReceipts(token, settings.folder.id).then(setFiles, onFail).finally(() => setLoading(false));
-  }, [token, settings, onFail]);
-
-  useEffect(load, [load]);
-
-  const total = (files || []).reduce((s, f) => s + (Number(f.appProperties?.total) || 0), 0);
-  return (
-    <FlatList
-      data={files || []}
-      keyExtractor={f => f.id}
-      refreshing={loading}
-      onRefresh={load}
-      ListHeaderComponent={files && (
-        <Text style={styles.summary}>{files.length} računa · ukupno {total.toFixed(2)} RSD</Text>
-      )}
-      ListEmptyComponent={!loading && <Text style={[styles.hint, { padding: 24 }]}>Nema računa u folderu.</Text>}
-      renderItem={({ item }) => (
-        <Pressable style={styles.row} onPress={() => Linking.openURL(item.webViewLink)}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.rowTitle} numberOfLines={1}>{item.appProperties?.shop || item.name}</Text>
-            <Text style={styles.hint} numberOfLines={1}>{item.name}</Text>
-          </View>
-          {item.appProperties?.total ? <Text style={styles.amount}>{Number(item.appProperties.total).toFixed(2)}</Text> : null}
-        </Pressable>
-      )}
-    />
-  );
-}
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#fff' },
   center: { flex: 1, justifyContent: 'center', padding: 24, gap: 12 },
-  page: { flex: 1, padding: 20, gap: 10 },
+  page: { padding: 20, gap: 10, paddingBottom: 40 },
   title: { fontSize: 32, fontWeight: '700', textAlign: 'center', marginBottom: 8 },
   h2: { fontSize: 17, fontWeight: '600', marginTop: 8 },
   label: { fontSize: 16, textAlign: 'center' },
@@ -509,11 +525,17 @@ const styles = StyleSheet.create({
   folderBox: { maxHeight: 220, borderWidth: 1, borderColor: '#eee', borderRadius: 8 },
   folderRow: { padding: 12, borderBottomWidth: 1, borderBottomColor: '#f2f2f2' },
   folderOn: { backgroundColor: '#e3f0ff' },
-  tabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#eee' },
-  tab: { paddingVertical: 14, paddingHorizontal: 18 },
-  tabOn: { borderBottomWidth: 3, borderBottomColor: '#1565c0' },
-  tabText: { fontSize: 16, color: '#666' },
-  tabTextOn: { color: '#1565c0', fontWeight: '600' },
+  tabBar: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: '#e6e8eb', backgroundColor: '#fff', paddingBottom: 4 },
+  tabItem: { flex: 1, alignItems: 'center', paddingVertical: 8, gap: 2 },
+  tabIcon: { fontSize: 20 },
+  tabDim: { opacity: 0.45 },
+  tabLabel: { fontSize: 11, color: '#888' },
+  tabLabelOn: { color: '#1565c0', fontWeight: '700' },
+  logo: { fontSize: 64, textAlign: 'center' },
+  pageTitle: { fontSize: 24, fontWeight: '700' },
+  primary: { padding: 15, borderRadius: 12, backgroundColor: '#1565c0', alignItems: 'center', marginTop: 8 },
+  primaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  disabled: { opacity: 0.4 },
   sheet: { height: '40%', borderTopLeftRadius: 16, borderTopRightRadius: 16, marginTop: -16, backgroundColor: '#fff' },
   summary: { padding: 14, fontSize: 16, fontWeight: '600', textAlign: 'center' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f2f2f2' },

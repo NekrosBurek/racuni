@@ -1,7 +1,7 @@
 // Receipts without a usable QR code: photograph them in-app, read the PFR data by OCR, let the user check it, then
 // fetch the verified receipt from Poreska uprava's form (the same result a QR scan gives), or keep just the photos.
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Button, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Button, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { File } from 'expo-file-system';
 import { ReceiptCamera, recognizeAsync } from './modules/text-scanner';
@@ -46,6 +46,16 @@ export default function PaperScan({ onClose, onVerified, onSaveImages, onFail })
   photosRef.current = photos;
 
   useEffect(() => () => { if (!kept.current) photosRef.current.forEach(deleteFile); }, []);
+
+  // Android back: from the Poreska page to the review, otherwise out of the paper flow.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (stage === 'verify') setStage('review');
+      else if (stage !== 'reading') onClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [stage, onClose]);
   useEffect(() => {
     if (!focus) return;
     const t = setTimeout(() => setFocus(null), 1200);

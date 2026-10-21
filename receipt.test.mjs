@@ -208,6 +208,55 @@ const resultPage = '<html><pre>==== ФИСКАЛНИ РАЧУН ====\nПФР б�
 assert.equal(verifiedReceipt({ href: 'https://suf.purs.gov.rs/verify', html: resultPage }, 'DFY7QVSV-DFY7QVSV-27982').html, resultPage);
 assert.equal(verifiedReceipt({ href: 'https://suf.purs.gov.rs/verify', html: '<form>Провери</form>' }, 'DFY7QVSV-DFY7QVSV-27982'), null);
 
+// Older receipts: fields from the text Drive extracts out of a PURS page PDF (labels and values in separate blocks).
+const { legacyFields } = await import('./legacy.js');
+const legacy = legacyFields(`10/21/26, 8:50 PM
+DFY7QVSV-DFY7QVSV-27982
+ПИБ: 105278961
+Предузеће: AUTO KRALJEVO
+Број рачуна:
+DFY7QVSV-DFY7QVSV27982
+Место продаје: AUTO KRALJEVO DOO KRA
+ЕСИР број: 444/1.0
+За уплату:
+Порез укупно:
+Време на безбедносном
+елементу:
+4.400,00
+733,33
+Платна картица
+20.12.2025.
+09:57:16
+26915/27982ПП`);
+assert.equal(legacy.invoiceNumber, 'DFY7QVSV-DFY7QVSV-27982');
+assert.equal(legacy.total, 4400);
+assert.equal(legacy.date.getDate(), 20);
+assert.equal(legacy.date.getHours(), 9);
+assert.equal(legacy.shop, 'AUTO KRALJEVO');
+assert.equal(legacyFields('Ukupan iznos računa 45.998,60\nPFR vreme: 21.10.2026 12:08:09').total, 45998.6);
+
+// List helpers: data from appProperties, else from the file name; months, search, stats and CSV.
+const { receiptInfo, groupByMonth, filterReceipts, spendingStats, toCsv } = await import('./stats.js');
+const saved = receiptInfo({ id: '1', name: '2026-10-19_Crafter_Uticnice.pdf', appProperties: { total: '5637', date: '2026-10-19T10:53:37.000Z', shop: 'CRAFTER doo', invoiceNumber: 'YT3SAJNH-YT3SAJNH-249953' } });
+assert.equal(saved.total, 5637);
+assert.equal(saved.complete, true);
+const old = receiptInfo({ id: '2', name: '2025-12-20_AutoKraljevo_DesnaViljuska_i_Termostat.pdf' });
+assert.equal(old.total, null);
+assert.equal(old.shop, 'Auto Kraljevo');
+assert.equal(old.date.getMonth(), 11);
+assert.equal(old.complete, false);
+const groups = groupByMonth([old, saved]);
+assert.deepEqual(groups.map(g => [g.title, g.total, g.data.length]), [['Oktobar 2026', 5637, 1], ['Decembar 2025', 0, 1]]);
+assert.deepEqual(filterReceipts([old, saved], 'crafter').map(r => r.id), ['1']);
+const stats = spendingStats([old, saved], new Date(2026, 9, 25));
+assert.equal(stats.thisMonth.total, 5637);
+assert.equal(stats.missingTotals, 1);
+assert.equal(stats.months.length, 6);
+assert.equal(stats.topShops[0].shop, 'CRAFTER doo');
+const csv = toCsv([saved, old]);
+assert.ok(csv.startsWith('﻿Datum;Radnja;Iznos (RSD)'));
+assert.ok(csv.includes(';5637,00;YT3SAJNH-YT3SAJNH-249953;'));
+
 assert.throws(() => parseReceiptUrl('https://example.com/?vl=abc'), /nije QR/);
 assert.throws(() => parseReceiptUrl('hello'), /nije link/);
 assert.equal(extractJournal('<div><pre class="x">RAČUN</pre></div>'), '<pre class="x">RAČUN</pre>');

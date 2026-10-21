@@ -33,6 +33,12 @@ jobs:
           java-version: 17
       # Caches Gradle downloads and build outputs between runs.
       - uses: gradle/actions/setup-gradle@v4
+      # Compiled C++ cached by file content: CMake decides by timestamps, so every fresh checkout recompiled
+      # all of it (~1.5 min). The cache only skips identical compiler runs; the APK is the same.
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ccache-${{ runner.os }}
+          max-size: 1G
 
       - run: npm ci
 
@@ -66,6 +72,12 @@ jobs:
           -Pandroid.enableMinifyInReleaseBuilds=false
           -Pandroid.enableShrinkResourcesInReleaseBuilds=false
         working-directory: android
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+          CCACHE_BASEDIR: ${{ github.workspace }}
+          CCACHE_NOHASHDIR: 'true'
+          CCACHE_SLOPPINESS: include_file_mtime,include_file_ctime,time_macros,pch_defines
 
       # Re-sign with our own key so every release installs over the previous one.
       - name: Sign APK
