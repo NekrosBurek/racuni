@@ -103,6 +103,53 @@ assert.deepEqual(specificationItems({ success: true, items: [{ name: 'TERMOSTAT'
   [{ name: 'TERMOSTAT', quantity: 1, total: 1700 }]);
 assert.deepEqual(specificationItems({ success: false }), []);
 
+// Paper receipts read by OCR (Latin model, so Cyrillic labels come out garbled as below).
+const { rowsFromLines, parsePaper, mergePaper, emptyPaper, paperReady } = await import('./paper.js');
+const box = (text, left, top) => ({ text, left, top, right: left + 100, bottom: top + 20 });
+assert.deepEqual(rowsFromLines([box('4.400,00', 300, 102), box('Ykynah n3hoc:', 10, 100), box('NNb: 105278961', 10, 40)]),
+  ['NNb: 105278961', 'Ykynah n3hoc: 4.400,00']);
+
+const frameTop = [
+  '============ ONCKANHN PAYYH ============', 'NNb: 105278961', 'Npeay3ehe: AUTO KRALJEVO',
+  'Mecto npoaaje: AUTO KRALJEVO DOO KRALJEVO', 'Aapeca: AMMNTPNJA TYLOBNNA 11', 'Kacnp: Mirko',
+  'ECNP 6poj: 444/1.0', '------------- NPOMET NPOAAJA -------------', 'Aptnkn', '========================================',
+  'Ha3nB Uena Kon. Ykynho', 'SS25486-AMC VILJUSKA DESNA_24495 /kom (b)', '2.700,00 1 2.700,00',
+];
+const frameBottom = [
+  'SS25486-AMC VILJUSKA DESNA_24495 /kom (b)', '2.700,00 1 2.700,00',
+  'D2F003TT TERMOSTAT_24501 /kom (b)', '1.700,00 1 1.700,00', '----------------------------------------',
+  'Ykynah n3hoc: 4.400,00', 'Nnatha kaptnua: 4.400,00', '========================================',
+  'Oshaka Mme Ctoпa Nope3', 'b O-NAB 20,00% 733,33', 'NOP Bpeme: 20.12.2025. 09:57:16',
+  'NOP 6poj payyha: DFY7QVSV-DFY7QVSV-27982', 'Bpojay payyha: 26915/27982NN',
+];
+const top = parsePaper(frameTop);
+assert.equal(top.shop, 'AUTO KRALJEVO');
+assert.equal(paperReady(top), false);
+const paper = mergePaper(mergePaper(emptyPaper(), top), parsePaper(frameBottom));
+assert.equal(paper.invoiceNumber, 'DFY7QVSV-DFY7QVSV-27982');
+assert.equal(paper.date.getFullYear(), 2025);
+assert.equal(paper.date.getDate(), 20);
+assert.equal(paper.total, 4400);
+assert.equal(paper.items.length, 2);
+assert.equal(paperReady(paper), true);
+assert.equal(fileName(DEFAULT_FORMAT, { ...paper, shop: paper.shop }), '2025-12-20_AutoKraljevo_Viljuska_Desna_i_Termostat.pdf');
+
+// Wrapped item names, cash payment (largest amount isn't the total), Crafter layout.
+const crafter = parsePaper([
+  'NNb: 112069571', 'Npeay3ehe: CRAFTER doo', 'Mecto npoaaje: MN 01 3MAJ', 'Ha3nB Uena Kon. Ykynho',
+  '030101225 4M MASKA CRNA (b)', '529,00 2 1.058,00',
+  '110101835 TITANIUM SANTORINI OSVEZIVAC', 'PROSTORA 500ML (b)', '699,00 1 699,00',
+  '----------------------------------------', 'Ykynah n3hoc: 1.757,00', 'oTOBNHa: 2.000,00', 'Nobpahaj: 243,00',
+]);
+assert.equal(crafter.total, 1757);
+assert.deepEqual(crafter.items.map(i => i.name), ['030101225 4M MASKA CRNA (b)', '110101835 TITANIUM SANTORINI OSVEZIVAC PROSTORA 500ML (b)']);
+assert.equal(crafter.shop, 'CRAFTER doo');
+// A frame with no items guesses the total; a later frame that has the real one wins.
+const guess = parsePaper(['Nnatha kaptnua: 4.400,00', 'Ykynah n3hoc: 4.400,00', 'Ђ 20,00% 733,33']);
+assert.equal(guess.total, 4400);
+assert.equal(guess.totalSure, false);
+assert.equal(mergePaper({ ...emptyPaper(), total: 999 }, parsePaper(frameBottom)).total, 4400);
+
 assert.throws(() => parseReceiptUrl('https://example.com/?vl=abc'), /nije QR/);
 assert.throws(() => parseReceiptUrl('hello'), /nije link/);
 assert.equal(extractJournal('<div><pre class="x">RAČUN</pre></div>'), '<pre class="x">RAČUN</pre>');
