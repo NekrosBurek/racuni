@@ -196,8 +196,8 @@ assert.equal(parsePfrTime('20.12.2025.'), null);
 // No-QR verification form: values in every format, a script that parses, and recognizing the result page.
 const { verifyValues, verifyScript, verifiedReceipt } = await import('./verifyFill.js');
 const vv = verifyValues({ invoiceNumber: 'DFY7QVSV-DFY7QVSV-27982', counter: '26915/27982ПП', date: new Date(2025, 11, 20, 9, 57, 16), total: 4400 });
-assert.deepEqual(vv.total, { text: '4.400,00', number: '4400.00' });
-assert.deepEqual(vv.time, { text: '20.12.2025. 09:57:16', datetime: '2025-12-20T09:57:16', date: '2025-12-20', time: '09:57:16' });
+assert.deepEqual(vv.total, { text: '4400,00', number: '4400.00' });
+assert.deepEqual(vv.time, { y: 2025, M: 12, d: 20, h: 9, m: 57, s: 16 });
 const script = verifyScript(vv);
 new Function(script); // must be valid JavaScript
 assert.ok(script.includes('"26915/27982ПП"') && script.includes('бројач') && script.includes('ReactNativeWebView'));
@@ -256,6 +256,36 @@ assert.equal(stats.topShops[0].shop, 'CRAFTER doo');
 const csv = toCsv([saved, old]);
 assert.ok(csv.startsWith('﻿Datum;Radnja;Iznos (RSD)'));
 assert.ok(csv.includes(';5637,00;YT3SAJNH-YT3SAJNH-249953;'));
+
+// The fill script on simulated forms: all fields in one block (labels must not leak between inputs),
+// a text date with a "dd.mm.yyyy HH:mm:ss" placeholder, a number total, and a minutes-only time picker.
+const { JSDOM } = await import('jsdom');
+function runForm(body, values) {
+  const dom = new JSDOM(`<html><body>${body}</body></html>`, { runScripts: 'outside-only', url: 'https://suf.purs.gov.rs/verify' });
+  const posts = [];
+  dom.window.ReactNativeWebView = { postMessage: m => posts.push(JSON.parse(m)) };
+  dom.window.eval(verifyScript(values));
+  return { doc: dom.window.document, posts };
+}
+const febValues = verifyValues({ invoiceNumber: 'DFY7QVSV-DFY7QVSV-27982', counter: '26915/27982ПП', date: new Date(2026, 1, 17, 10, 49, 10), total: 4400 });
+const oneBlock = runForm(`<form><div class="card">
+  <label for="a">Укупан износ</label><input id="a" name="TotalAmount" type="number">
+  <label for="b">ПФР време</label><input id="b" name="SdcTime" placeholder="dd.mm.yyyy HH:mm:ss">
+  <label for="c">ПФР број рачуна</label><input id="c" name="InvoiceNumber">
+  <label for="d">Бројач рачуна</label><input id="d" name="Counter">
+  <button type="button">Провери</button></div></form>`, febValues);
+const val = id => oneBlock.doc.getElementById(id).value;
+assert.equal(val('a'), '4400.00');
+assert.equal(val('b'), '17.02.2026 10:49:10');
+assert.equal(val('c'), 'DFY7QVSV-DFY7QVSV-27982');
+assert.equal(val('d'), '26915/27982ПП');
+const report = oneBlock.posts.find(p => p.type === 'form');
+assert.equal(report.fields.length, 4);
+// No labels at all, only the text around each input; a minutes-only datetime picker; a text amount.
+const bare = runForm(`<div><div>Износ <input class="x"></div><div>Време <input type="datetime-local" step="60"></div>
+  <div>Број рачуна <input></div><div>Бројач <input></div></div>`, febValues);
+const ins = [...bare.doc.querySelectorAll('input')].map(i => i.value);
+assert.deepEqual(ins, ['4400,00', '2026-02-17T10:49', 'DFY7QVSV-DFY7QVSV-27982', '26915/27982ПП']);
 
 assert.throws(() => parseReceiptUrl('https://example.com/?vl=abc'), /nije QR/);
 assert.throws(() => parseReceiptUrl('hello'), /nije link/);
