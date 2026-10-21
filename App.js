@@ -17,7 +17,7 @@ import { REPO, APK_URL, isNewer } from './version';
 WebBrowser.maybeCompleteAuthSession();
 
 // OAuth client IDs from Google Cloud Console (see README.md).
-const ANDROID_CLIENT_ID = 'PASTE-ANDROID-CLIENT-ID.apps.googleusercontent.com';
+const ANDROID_CLIENT_ID = '21750469073-f08lm2v1en0kmgat0qg5pqh65d9ie17n.apps.googleusercontent.com';
 const IOS_CLIENT_ID = 'PASTE-IOS-CLIENT-ID.apps.googleusercontent.com';
 
 // Every push to main publishes a GitHub release; offer it if it's newer than this build.
