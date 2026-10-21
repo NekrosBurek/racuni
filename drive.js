@@ -1,3 +1,5 @@
+import { receiptDescription } from './stats.js';
+
 const API = 'https://www.googleapis.com/drive/v3/files';
 const FOLDER = 'application/vnd.google-apps.folder';
 const q = s => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
@@ -52,7 +54,7 @@ export async function findReceipt(token, invoiceNumber) {
 
 export const listReceipts = (token, folderId) =>
   search(token, `'${q(folderId)}' in parents and mimeType='application/pdf' and trashed=false`,
-    'id,name,webViewLink,appProperties,createdTime', '&orderBy=createdTime desc&pageSize=1000');
+    'id,name,description,webViewLink,appProperties,createdTime', '&orderBy=createdTime desc&pageSize=1000');
 
 export function uploadPdf(token, folderId, name, r, base64) {
   const boundary = 'racuni' + Date.now();
@@ -62,6 +64,7 @@ export function uploadPdf(token, folderId, name, r, base64) {
     mimeType: 'application/pdf',
     // Drive caps key+value at 124 bytes, hence the shop slice.
     appProperties: { invoiceNumber: r.invoiceNumber, total: String(r.total), date: isNaN(r.date) ? '' : r.date.toISOString(), shop: r.shop.slice(0, 40) },
+    description: receiptDescription(r),
   };
   const body =
     `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n` +
@@ -78,6 +81,9 @@ export function uploadPdf(token, folderId, name, r, base64) {
 export const trashReceipt = (token, id) => patch(token, id, { trashed: true });
 
 export const setReceiptData = (token, id, appProperties) => patch(token, id, { appProperties });
+
+// New name, and the stored naming data when it had to be read from the PDF.
+export const renameReceipt = (token, id, name, description) => patch(token, id, description ? { name, description } : { name });
 
 export const mediaUrl = id => `${API}/${id}?alt=media`;
 

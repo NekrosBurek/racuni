@@ -1,7 +1,7 @@
 // Receipts without a usable QR code: photograph them in-app, read the PFR data by OCR, let the user check it, then
 // fetch the verified receipt from Poreska uprava's form (the same result a QR scan gives), or keep just the photos.
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Button, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Button, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { File } from 'expo-file-system';
 import { ReceiptCamera, recognizeAsync } from './modules/text-scanner';
@@ -31,6 +31,16 @@ function checkForm(form) {
   };
 }
 
+const FIELD_NAMES = { counter: 'brojač', invoiceNumber: 'PFR broj', total: 'iznos', time: 'PFR vreme' };
+
+// "Popunjeno: …" or which fields the page didn't take, so the user knows what to finish by hand.
+function formSummary(report) {
+  const missing = Object.keys(FIELD_NAMES).filter(f => !report.fields.some(x => x.field === f && x.value));
+  return missing.length
+    ? `Nije popunjeno: ${missing.map(f => FIELD_NAMES[f]).join(', ')}. Dopuni na stranici, ili pošalji opis forme za popravku.`
+    : 'Sva polja su popunjena.';
+}
+
 export default function PaperScan({ onClose, onVerified, onSaveImages, onFail }) {
   const [stage, setStage] = useState('camera'); // camera | reading | review | verify
   const [photos, setPhotos] = useState([]);
@@ -40,6 +50,7 @@ export default function PaperScan({ onClose, onVerified, onSaveImages, onFail })
   const [scan, setScan] = useState(null); // { data, rows }
   const [form, setForm] = useState(null);
   const [showText, setShowText] = useState(false);
+  const [formReport, setFormReport] = useState(null); // what the fill script found on the Poreska form
   const camera = useRef(null);
   const kept = useRef(false); // photos handed over to a save; don't delete them on close
   const photosRef = useRef(photos);
@@ -119,6 +130,7 @@ export default function PaperScan({ onClose, onVerified, onSaveImages, onFail })
   function onMessage(event) {
     let page;
     try { page = JSON.parse(event.nativeEvent.data); } catch { return; }
+    if (page.type === 'form') { setFormReport(page); return; }
     const found = page.type === 'page' && verifiedReceipt(page, checked.invoiceNumber);
     if (!found) return;
     photos.forEach(deleteFile); // the verified receipt replaces the photos
@@ -175,6 +187,12 @@ export default function PaperScan({ onClose, onVerified, onSaveImages, onFail })
           onMessage={onMessage}
           startInLoadingState
         />
+        {formReport && (
+          <View style={styles.formBar}>
+            <Text style={styles.formBarText}>{formSummary(formReport)}</Text>
+            <Button title="Pošalji opis forme" onPress={() => Share.share({ message: JSON.stringify(formReport, null, 1) })} />
+          </View>
+        )}
       </View>
     );
   }
@@ -196,10 +214,10 @@ export default function PaperScan({ onClose, onVerified, onSaveImages, onFail })
       <Text style={styles.label}>Pročitano artikala: {scan.data.items.length}</Text>
       {field('invoiceNumber', 'PFR broj računa (XXXXXXXX-XXXXXXXX-broj)', !!checked.invoiceNumber, { autoCapitalize: 'characters' })}
       {field('counter', 'Brojač računa (npr. 26915/27982ПП)', !!checked.counter, { autoCapitalize: 'characters' })}
-      {field('time', 'PFR vreme (dd.mm.gggg. hh:mm:ss)', !!checked.date, { keyboardType: 'numbers-and-punctuation' })}
+      {field('time', 'PFR vreme sa sekundama (dd.mm.gggg. hh:mm:ss), ne ESIR vreme', !!checked.date, { keyboardType: 'numbers-and-punctuation' })}
       {field('total', 'Ukupan iznos (RSD)', !!checked.total, { keyboardType: 'numbers-and-punctuation' })}
       {field('shop', 'Radnja (za ime fajla)', true, { autoCapitalize: 'characters' })}
-      <Button title="Preuzmi sa Poreske uprave" disabled={!canVerify} onPress={() => setStage('verify')} />
+      <Button title="Preuzmi sa Poreske uprave" disabled={!canVerify} onPress={() => { setFormReport(null); setStage('verify'); }} />
       <Button title="Sačuvaj samo sliku" color="#555" disabled={!canSaveImages} onPress={saveImages} />
       <View style={styles.row}>
         <View style={styles.half}><Button title="Slikaj ponovo" color="#888" onPress={retake} /></View>
@@ -222,6 +240,8 @@ const styles = StyleSheet.create({
   focusRing: { position: 'absolute', width: 60, height: 60, borderRadius: 30, borderWidth: 2, borderColor: '#ffeb3b' },
   webBar: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8, backgroundColor: '#f2f2f2' },
   webTitle: { fontWeight: '600', flexShrink: 1 },
+  formBar: { padding: 10, gap: 6, backgroundColor: '#fff6e0', borderTopWidth: 1, borderTopColor: '#f0d58c' },
+  formBarText: { color: '#7a5600' },
   review: { flex: 1, padding: 16, backgroundColor: '#fff' },
   title: { fontSize: 18, fontWeight: '700' },
   label: { color: '#555', fontSize: 13 },
