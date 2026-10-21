@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Button, FlatList, Linking, Pressable, StatusBar, StyleSheet, Text, TextInput, Vibration, View,
+  ActivityIndicator, Alert, AppState, Button, FlatList, Linking, Pressable, StatusBar, StyleSheet, Text, TextInput, Vibration, View,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import * as Print from 'expo-print';
-import { File } from 'expo-file-system';
+import { File, Paths } from 'expo-file-system';
 import { parseReceiptUrl, extractJournal, shopName, fileName, DEFAULT_FORMAT, FORMAT_TOKENS } from './receipt';
 import { findSettings, listFolders, saveSettings, findReceipt, listReceipts, uploadPdf } from './drive';
 import { REPO, APK_URL, VERSION, isNewer } from './version';
@@ -18,20 +18,70 @@ WebBrowser.maybeCompleteAuthSession();
 const ANDROID_CLIENT_ID = '21750469073-f08lm2v1en0kmgat0qg5pqh65d9ie17n.apps.googleusercontent.com';
 const IOS_CLIENT_ID = 'PASTE-IOS-CLIENT-ID.apps.googleusercontent.com';
 
-// Every push to main publishes a GitHub release; offer it if it's newer than this build.
-async function checkForUpdate() {
+const CHECK_EVERY_MS = 60 * 60 * 1000;
+const UPDATE_FILE = 'racuni-update.apk';
+
+// Every push to main publishes a GitHub release; returns its version and APK link if it's newer than this build.
+async function findUpdate() {
   try {
     const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`);
-    if (!res.ok) return;
-    const latest = (await res.json()).tag_name.replace(/^v/, '');
-    if (!isNewer(latest, VERSION)) return;
-    Alert.alert('Nova verzija', `Dostupna je verzija ${latest}.`, [
-      { text: 'Kasnije', style: 'cancel' },
-      { text: 'Preuzmi', onPress: () => Linking.openURL(APK_URL) },
-    ]);
+    if (!res.ok) return null;
+    const release = await res.json();
+    const latest = release.tag_name.replace(/^v/, '');
+    if (!isNewer(latest, VERSION)) return null;
+    const asset = release.assets?.find(a => a.name === 'racuni.apk');
+    return { latest, url: asset?.browser_download_url ?? APK_URL };
   } catch {
-    // offline or GitHub down: just skip the check
+    return null; // offline or GitHub down: just skip the check
   }
+}
+
+// Downloads the APK into the cache and hands it to the Android installer; the browser is the fallback.
+async function installUpdate(url) {
+  try {
+    const file = await File.downloadFileAsync(url, new File(Paths.cache, UPDATE_FILE), { idempotent: true });
+    await file.preview({ mimeType: 'application/vnd.android.package-archive' });
+  } catch {
+    Linking.openURL(APK_URL);
+  }
+}
+
+// Checks at start-up and whenever the app comes back to the foreground, at most once an hour.
+function useUpdates() {
+  const [downloading, setDownloading] = useState(false);
+  const busy = useRef(false);
+  const lastCheck = useRef(0);
+
+  useEffect(() => {
+    const leftover = new File(Paths.cache, UPDATE_FILE);
+    try { if (leftover.exists) leftover.delete(); } catch { /* nothing to clean */ }
+
+    const check = async () => {
+      if (busy.current || Date.now() - lastCheck.current < CHECK_EVERY_MS) return;
+      busy.current = true;
+      lastCheck.current = Date.now();
+      const update = await findUpdate();
+      if (!update) { busy.current = false; return; }
+      Alert.alert('Nova verzija', `Dostupna je verzija ${update.latest}.`, [
+        { text: 'Kasnije', style: 'cancel', onPress: () => { busy.current = false; } },
+        {
+          text: 'Preuzmi',
+          onPress: async () => {
+            setDownloading(true);
+            await installUpdate(update.url);
+            setDownloading(false);
+            busy.current = false;
+          },
+        },
+      ], { onDismiss: () => { busy.current = false; } });
+    };
+
+    check();
+    const sub = AppState.addEventListener('change', state => { if (state === 'active') check(); });
+    return () => sub.remove();
+  }, []);
+
+  return downloading;
 }
 
 async function saveReceipt(token, settings, r) {
@@ -61,7 +111,7 @@ export default function App() {
     scopes: ['https://www.googleapis.com/auth/drive'],
   });
 
-  useEffect(() => { checkForUpdate(); }, []);
+  const downloading = useUpdates();
 
   useEffect(() => {
     if (response?.type === 'success') setToken(response.authentication.accessToken);
@@ -122,6 +172,12 @@ export default function App() {
     <SafeAreaProvider>
     <SafeAreaView style={styles.root}>
       {screen}
+      {downloading && (
+        <View style={styles.updateBar}>
+          <ActivityIndicator color="#fff" />
+          <Text style={styles.errorText}>Preuzimam novu verziju…</Text>
+        </View>
+      )}
       {error && (
         <Pressable style={styles.errorBar} onPress={() => setError(null)}>
           <Text style={styles.errorText}>{error} (dodirni da zatvoriš)</Text>
@@ -342,4 +398,5 @@ const styles = StyleSheet.create({
   err: { color: '#c62828' },
   errorBar: { position: 'absolute', left: 12, right: 12, bottom: 24, padding: 14, borderRadius: 10, backgroundColor: '#c62828' },
   errorText: { color: '#fff' },
+  updateBar: { position: 'absolute', left: 12, right: 12, bottom: 24, padding: 14, borderRadius: 10, backgroundColor: '#1565c0', flexDirection: 'row', alignItems: 'center', gap: 10 },
 });
