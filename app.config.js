@@ -17,6 +17,8 @@ module.exports = {
   android: {
     package: 'rs.racuni.app',
     versionCode: Math.max(build, 1),
+    // Lets the app hand a downloaded update to the Android installer.
+    permissions: ['android.permission.REQUEST_INSTALL_PACKAGES'],
     adaptiveIcon: {
       backgroundColor: '#E6F4FE',
       foregroundImage: './assets/android-icon-foreground.png',

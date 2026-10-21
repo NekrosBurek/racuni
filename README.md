@@ -9,7 +9,7 @@ Skeniraš QR kodove fiskalnih računa jedan za drugim, a aplikacija svaki sačuv
 - **Skeniranje:** kamera radi stalno. Svaki novi QR se odmah stavi u red i čuva u pozadini, a ti nastavljaš sa sledećim računom.
 - **Duplikati:** broj računa iz QR koda upisuje se u skriveno polje fajla na Drive-u. Naziv i lokacija fajla zato nisu bitni.
 - **Računi:** lista PDF-ova iz foldera sa ukupnim iznosom. Dodir otvara račun.
-- **Ažuriranje:** pri pokretanju aplikacija proveri GitHub Releases i ponudi novu verziju.
+- **Ažuriranje:** pri pokretanju i pri povratku u aplikaciju (najviše jednom na sat) proveri GitHub Releases. Ako ima novija verzija, na „Preuzmi" je sama skine i otvori Android instalaciju. Prvi put Android traži dozvolu da Računi instalira aplikacije.
 
 Na telefonu se ništa ne čuva. Folder i format imena upisani su u skrivena polja samog foldera na Drive-u. Prijava traje dok je aplikacija otvorena.
 
