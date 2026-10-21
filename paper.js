@@ -18,10 +18,63 @@ export function amount(s) {
   return Number(`${m[1]}${m[2].replace(/[.,]/g, '') || '0'}.${m[3]}`);
 }
 
+// Two-digit years only count right before a time, where they can't be anything else.
+const DATE_SHORT_YEAR = /(\d{1,2})\s*[.,]\s*(\d{1,2})\s*[.,]\s*(\d{2})\.?\s+(\d{1,2})\s*[:.]\s*(\d{2})(?:\s*[:.]\s*(\d{2}))?/;
+const TIME_ONLY = /^\s*(\d{1,2})\s*[:.]\s*(\d{2})(?:\s*[:.]\s*(\d{2}))?\b/;
+const COUNTER = /(\d{1,10})\s*\/\s*(\d{1,10})\s*([A-Za-zА-Яа-я]{2})?/g;
+
+// OCR reads digits as look-alike letters ("2O.12.2O25. O9:57:l6"); fixed only in runs that are mostly digits.
+export function fixDigits(text) {
+  return text.replace(/[0-9OoDIl|SBZ][0-9OoDIl|SBZ.,:\s]*[0-9OoDIl|SBZ]/g, run =>
+    run.replace(/\D/g, '').length >= 3
+      ? run.replace(/[OoD]/g, '0').replace(/[Il|]/g, '1').replace(/S/g, '5').replace(/B/g, '8').replace(/Z/g, '2')
+      : run);
+}
+
+// Receipt type after the counter: ПП sale, ПР refund, КП/КР copy, ОП/ОР training, АП/АР advance. Latin OCR of
+// Cyrillic gives N/M for П, P for Р, K for К; a missing suffix is a sale.
+function counterSuffix(s) {
+  if (!s) return 'ПП';
+  const map = { N: 'П', M: 'П', П: 'П', P: 'Р', Р: 'Р', K: 'К', К: 'К', O: 'О', О: 'О', A: 'А', А: 'А' };
+  const out = [...s.toUpperCase()].map(c => map[c]).join('');
+  return /^[ПКОА][ПР]$/.test(out) ? out : 'ПП';
+}
+
+// "26915/27982ПП": receipts of this type / all receipts of the device. The second number is the PFR number's counter.
+function readCounters(rows) {
+  const found = [];
+  for (const row of rows) {
+    for (const m of fixDigits(row).matchAll(COUNTER)) {
+      const [a, b] = [Number(m[1]), Number(m[2])];
+      if (a >= 1 && a <= b) found.push({ text: `${a}/${b}${counterSuffix(m[3])}`, total: b, suffixed: !!m[3] });
+    }
+  }
+  return found;
+}
+
+export const formatPfrTime = d => {
+  const p = n => String(n).padStart(2, '0');
+  return d ? `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()}. ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}` : '';
+};
+
+// "20.12.2025. 09:57:16" (seconds optional) -> Date; null when it isn't a real date and time.
+export function parsePfrTime(text) {
+  const m = fixDigits(text.trim()).match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})\.?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!m) return null;
+  const d = new Date(+m[3], +m[2] - 1, +m[1], +m[4], +m[5], +(m[6] ?? 0));
+  return d.getDate() === +m[1] && d.getMonth() === +m[2] - 1 && d.getHours() === +m[4] && d.getMinutes() === +m[5] ? d : null;
+}
+
 // A date only counts if it is plausible for a receipt being scanned now.
-function readDate(row) {
-  const d = row.match(DATE);
-  if (!d) return null;
+function readDate(raw) {
+  const row = fixDigits(raw);
+  let d = row.match(DATE);
+  if (!d) {
+    d = row.match(DATE_SHORT_YEAR);
+    if (!d) return null;
+    d = [...d];
+    d[3] = String(2000 + Number(d[3]));
+  }
   const [day, month, year] = [+d[1], +d[2], +d[3]];
   const thisYear = new Date().getFullYear();
   if (month < 1 || month > 12 || day < 1 || day > 31 || year < thisYear - 3 || year > thisYear + 1) return null;
@@ -84,12 +137,25 @@ export function parsePaper(rows) {
     if (inv && !out.invoiceNumber) {
       out.invoiceNumber = `${inv[1]}-${inv[2]}-${Number(inv[3].replace(/O/g, '0').replace(/I/g, '1'))}`;
     }
+  }
+  rows.forEach((row, i) => {
     // A date with a time wins (the PFR time); among those the last, as the PFR time follows the ESIR time.
-    const d = readDate(row);
+    // The time may have landed on the next row.
+    let d = readDate(row);
+    if (d && !d.hasTime && TIME_ONLY.test(fixDigits(rows[i + 1] ?? ''))) d = readDate(`${row} ${rows[i + 1]}`) ?? d;
     if (d && (d.hasTime || !dateHasTime)) {
       out.date = d.date;
       dateHasTime = d.hasTime;
     }
+  });
+
+  const counters = readCounters(rows);
+  const pfrCounter = out.invoiceNumber ? Number(out.invoiceNumber.split('-')[2]) : null;
+  const match = counters.find(c => c.total === pfrCounter);
+  const pick = match ?? counters.find(c => c.suffixed) ?? counters[0];
+  if (pick) {
+    out.counter = pick.text;
+    out.counterSure = !!match;
   }
 
   // Header: the tax ID (9 digits) row, then the company, then the place of sale.
@@ -130,6 +196,9 @@ export function mergePaper(a, b) {
   const seen = new Set(a.items.map(key));
   return {
     invoiceNumber: a.invoiceNumber ?? b.invoiceNumber,
+    // A counter confirmed by the PFR number beats an unconfirmed one.
+    counter: a.counterSure || !b.counterSure ? a.counter ?? b.counter : b.counter,
+    counterSure: a.counterSure || b.counterSure,
     date: a.date ?? b.date,
     // A total read right after the items beats a guess from a partial frame.
     total: a.totalSure || !b.totalSure ? a.total ?? b.total : b.total,
@@ -141,7 +210,10 @@ export function mergePaper(a, b) {
 }
 
 export function emptyPaper() {
-  return { invoiceNumber: null, date: null, total: null, totalSure: false, shop: '', place: '', items: [] };
+  return {
+    invoiceNumber: null, counter: null, counterSure: false, date: null, total: null, totalSure: false,
+    shop: '', place: '', items: [],
+  };
 }
 
 // Enough to save: the invoice number (duplicate check) and the date.
