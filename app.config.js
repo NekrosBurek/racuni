@@ -4,7 +4,8 @@ const build = Number(process.env.BUILD_NUMBER) || 0;
 module.exports = {
   name: 'Računi',
   slug: 'racuni',
-  scheme: 'racuni',
+  // Google sign-in returns to <package>:/oauthredirect, so the package name must be a scheme too.
+  scheme: ['racuni', 'rs.racuni.app'],
   version: `1.0.${build}`,
   orientation: 'portrait',
   icon: './assets/icon.png',
