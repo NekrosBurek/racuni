@@ -15,6 +15,8 @@ import {
 import { findSettings, listFolders, saveSettings, findReceipt, listReceipts, uploadPdf } from './drive';
 import { REPO, APK_URL, VERSION, isNewer } from './version';
 import { saveLogin, restoreLogin, logout } from './auth';
+import { rowsFromLines, parsePaper, mergePaper, emptyPaper, paperReady } from './paper';
+import { isAvailable as ocrAvailable, recognizeAsync } from './modules/text-scanner';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -324,6 +326,30 @@ function Onboarding({ token, current, onFail, onDone, onCancel, onLogout }) {
   );
 }
 
+const PAPER_PHOTOS = 4;
+const FRAME_EVERY_MS = 700;
+
+const deleteFile = uri => { try { new File(uri).delete(); } catch { /* already gone */ } };
+
+// A receipt read from paper: the photos become the PDF, OCR'd fields fill the name and the duplicate check.
+async function savePaperReceipt(token, settings, p) {
+  const existing = await findReceipt(token, p.invoiceNumber);
+  if (existing) throw Object.assign(new Error(`Već postoji: ${existing.name}`), { duplicate: true });
+  const images = await Promise.all(p.photos.map(uri => new File(uri).base64()));
+  const pdf = await Print.printToFileAsync({
+    html: `<html><head><meta charset="utf-8"></head><body style="margin:0">${images
+      .map(b => `<img src="data:image/jpeg;base64,${b}" style="display:block;width:100%;page-break-after:always">`)
+      .join('')}</body></html>`,
+    base64: true,
+  });
+  deleteFile(pdf.uri);
+  const total = p.total ?? p.items.reduce((s, i) => s + i.total, 0);
+  const receipt = { ...p, total };
+  const saved = await uploadPdf(token, settings.folder.id, fileName(settings.nameFormat, receipt), receipt, pdf.base64);
+  p.photos.forEach(deleteFile); // kept until the upload succeeded, so a retry still has them
+  return saved.name;
+}
+
 const KIND_ICON = { wait: '⏳', ok: '✅', dup: '⚠️', err: '❌' };
 
 function Scanner({ token, settings, onFail, active }) {
@@ -331,6 +357,63 @@ function Scanner({ token, settings, onFail, active }) {
   const [items, setItems] = useState([]); // newest first: { id, kind, title, text, receipt }
   const seen = useRef(new Set());
   const queue = useRef(Promise.resolve());
+  const camera = useRef(null);
+  const [mode, setMode] = useState('qr'); // 'qr' | 'paper'
+  const [paper, setPaper] = useState(emptyPaper());
+  const paperScan = useRef({ data: emptyPaper(), photos: [] });
+
+  const resetPaper = useCallback(() => {
+    paperScan.current.photos.forEach(deleteFile);
+    paperScan.current = { data: emptyPaper(), photos: [] };
+    setPaper(emptyPaper());
+  }, []);
+
+  // Paper mode: grab a silent frame, read it, merge what it shows, and go again (live, like the QR scan).
+  useEffect(() => {
+    if (mode !== 'paper' || !active) return;
+    let stopped = false;
+    (async () => {
+      while (!stopped) {
+        const started = Date.now();
+        try {
+          const photo = await camera.current?.takePictureAsync({ quality: 0.5, shutterSound: false });
+          if (photo) {
+            const frame = parsePaper(rowsFromLines(await recognizeAsync(photo.uri)));
+            const scan = paperScan.current;
+            const merged = mergePaper(scan.data, frame);
+            const gained = JSON.stringify(merged) !== JSON.stringify(scan.data);
+            // Frames that added something make up the saved PDF.
+            if (!stopped && gained && scan.photos.length < PAPER_PHOTOS) scan.photos.push(photo.uri);
+            else deleteFile(photo.uri);
+            if (!stopped && gained) {
+              scan.data = merged;
+              setPaper(merged);
+            }
+          }
+        } catch {
+          // camera not ready yet or OCR failed on this frame: try the next one
+        }
+        await new Promise(r => setTimeout(r, Math.max(0, FRAME_EVERY_MS - (Date.now() - started))));
+      }
+    })();
+    return () => { stopped = true; };
+  }, [mode, active]);
+
+  useEffect(() => () => paperScan.current.photos.forEach(deleteFile), []);
+
+  function savePaper() {
+    const { data, photos } = paperScan.current;
+    paperScan.current = { data: emptyPaper(), photos: [] }; // the photos now belong to the queued save
+    setPaper(emptyPaper());
+    const id = `paper:${data.invoiceNumber}`;
+    if (seen.current.has(id)) { photos.forEach(deleteFile); return; }
+    seen.current.add(id);
+    Vibration.vibrate(40);
+    const r = { ...data, photos };
+    const title = `${(data.total ?? 0).toFixed(2)} RSD · ${data.date.toLocaleDateString('sr-RS')} · papir`;
+    setItems(list => [{ id, kind: 'wait', title, text: 'Čeka…', receipt: r }, ...list]);
+    enqueue(id, r);
+  }
 
   const update = (id, patch) => setItems(list => list.map(i => (i.id === id ? { ...i, ...patch } : i)));
 
@@ -338,7 +421,7 @@ function Scanner({ token, settings, onFail, active }) {
   function enqueue(id, r) {
     update(id, { kind: 'wait', text: 'Čeka…' });
     queue.current = queue.current
-      .then(() => saveReceipt(token, settings, r))
+      .then(() => (r.photos ? savePaperReceipt : saveReceipt)(token, settings, r))
       .then(
         name => update(id, { kind: 'ok', text: name }),
         e => {
@@ -377,7 +460,38 @@ function Scanner({ token, settings, onFail, active }) {
   const count = k => items.filter(i => i.kind === k).length;
   return (
     <View style={{ flex: 1 }}>
-      <CameraView style={{ flex: 1 }} barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={onScan} />
+      <CameraView
+        ref={camera}
+        style={{ flex: 1 }}
+        barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+        onBarcodeScanned={onScan}
+      />
+      {ocrAvailable && (
+        <View style={styles.modes}>
+          {[['qr', 'QR kod'], ['paper', 'Račun bez QR']].map(([key, label]) => (
+            <Pressable
+              key={key}
+              style={[styles.mode, mode === key && styles.modeOn]}
+              onPress={() => { if (key !== mode) { resetPaper(); setMode(key); } }}>
+              <Text style={[styles.modeText, mode === key && styles.modeTextOn]}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+      {mode === 'paper' && (
+        <View style={styles.paper}>
+          <Text style={styles.rowTitle}>Polako pomeraj kameru niz ceo račun</Text>
+          <Text>Broj: {paper.invoiceNumber ?? '…'}</Text>
+          <Text>Datum: {paper.date ? paper.date.toLocaleString('sr-RS') : '…'}</Text>
+          <Text>Iznos: {paper.total !== null ? `${paper.total.toFixed(2)} RSD` : '…'}</Text>
+          <Text>Radnja: {paper.shop || '…'}</Text>
+          <Text>Artikli: {paper.items.length}</Text>
+          <View style={styles.paperButtons}>
+            <Button title="Sačuvaj" disabled={!paperReady(paper)} onPress={savePaper} />
+            <Button title="Poništi" color="#888" onPress={resetPaper} />
+          </View>
+        </View>
+      )}
       <View style={styles.sheet}>
         <Text style={styles.summary}>
           {items.length === 0
@@ -471,5 +585,12 @@ const styles = StyleSheet.create({
   err: { color: '#c62828' },
   errorBar: { position: 'absolute', left: 12, right: 12, bottom: 24, padding: 14, borderRadius: 10, backgroundColor: '#c62828' },
   errorText: { color: '#fff' },
+  modes: { position: 'absolute', top: 12, alignSelf: 'center', flexDirection: 'row', backgroundColor: '#0008', borderRadius: 20, padding: 3 },
+  mode: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 17 },
+  modeOn: { backgroundColor: '#fff' },
+  modeText: { color: '#fff', fontWeight: '600' },
+  modeTextOn: { color: '#000' },
+  paper: { position: 'absolute', top: 60, left: 12, right: 12, padding: 12, borderRadius: 10, backgroundColor: '#fffe', gap: 2 },
+  paperButtons: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
   updateBar: { position: 'absolute', left: 12, right: 12, bottom: 24, padding: 14, borderRadius: 10, backgroundColor: '#1565c0', flexDirection: 'row', alignItems: 'center', gap: 10 },
 });

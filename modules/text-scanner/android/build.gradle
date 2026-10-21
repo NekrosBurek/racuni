@@ -1,0 +1,20 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'rs.racuni'
+version = '1.0.0'
+
+android {
+  namespace "rs.racuni.textscanner"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+  }
+}
+
+dependencies {
+  // Latin model bundled in the APK, so it works offline from the first launch.
+  implementation "com.google.mlkit:text-recognition:16.0.1"
+}

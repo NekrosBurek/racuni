@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
     paths-ignore: ['**.md', 'LICENSE', '.gitignore']
+  # Pull requests only build (no signing, no release), so native changes are compiled before merging.
+  pull_request:
+    branches: [main]
+    paths-ignore: ['**.md', 'LICENSE', '.gitignore']
   workflow_dispatch:
 
 # A newer push makes the running build pointless.
@@ -32,11 +36,11 @@ jobs:
 
       - run: npm ci
 
-      # Native code only changes with dependencies, config or assets; reuse its build outputs otherwise.
+      # Native code only changes with dependencies, config, assets or modules/; reuse its build outputs otherwise.
       # Restored after npm ci, which would delete the node_modules parts.
       - uses: actions/cache@v4
         with:
-          key: native-${{ runner.os }}-${{ hashFiles('package-lock.json', 'app.config.js', 'assets/**') }}
+          key: native-${{ runner.os }}-${{ hashFiles('package-lock.json', 'app.config.js', 'assets/**', 'modules/**') }}
           path: |
             android
             node_modules/**/android/build
@@ -65,6 +69,7 @@ jobs:
 
       # Re-sign with our own key so every release installs over the previous one.
       - name: Sign APK
+        if: github.event_name != 'pull_request'
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -77,6 +82,7 @@ jobs:
           rm release.keystore
 
       - name: Publish release
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
