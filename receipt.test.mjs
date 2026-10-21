@@ -150,6 +150,28 @@ assert.equal(guess.total, 4400);
 assert.equal(guess.totalSure, false);
 assert.equal(mergePaper({ ...emptyPaper(), total: 999 }, parsePaper(frameBottom)).total, 4400);
 
+// OCR punctuation noise: the date and the amounts still come through.
+const noisy = parsePaper([
+  'NNb: 105278961', 'Npeay3ehe: AUTO KRALJEVO', 'Ha3nB Uena Kon. Ykynho',
+  'SS25486-AMC VILJUSKA DESNA_24495 /kom (b)', '2,700,00 1 2.700.00',
+  'D2F003TT TERMOSTAT_24501 /kom (b)', '1.700, 00 1 1.700,00', '------------------',
+  'Nnatha kaptnua: 4.400,00', // no "Укупан износ" row: the first single amount after the items
+  'ECNP Bpeme: 20,12,2025 09.50.02', 'NOP Bpeme: 20.12.2025 . 09:57:16',
+  'NOP 6poj payyha: DFY7QVSV – DFY7QVSV - 279B2', 'NOP 6poj payyha: DFY7QVSV-DFY7QVSV-2798O',
+]);
+assert.deepEqual(noisy.items.map(i => i.total), [2700, 1700]);
+assert.equal(noisy.total, 4400);
+assert.equal(noisy.date.getMonth(), 11);
+assert.equal(noisy.date.getMinutes(), 57); // the later (PFR) time wins
+assert.equal(noisy.invoiceNumber, 'DFY7QVSV-DFY7QVSV-27980');
+// Total from the items' sum when it is printed somewhere (e.g. only in the payment block).
+const summed = parsePaper(['MASKA (b)', '529,00 2 1.058,00', 'PRIRUBNICA (b)', '159,00 2 318,00', 'Ђ 20,00% 229,33 1.376,00']);
+assert.equal(summed.total, 1376);
+// Implausible dates (not this decade) are ignored; a date without a time still counts.
+assert.equal(parsePaper(['31.13.2025 10:00']).date, null);
+assert.equal(parsePaper(['01.01.1999 10:00']).date, null);
+assert.equal(parsePaper(['20.12.2025.']).date.getDate(), 20);
+
 assert.throws(() => parseReceiptUrl('https://example.com/?vl=abc'), /nije QR/);
 assert.throws(() => parseReceiptUrl('hello'), /nije link/);
 assert.equal(extractJournal('<div><pre class="x">RAČUN</pre></div>'), '<pre class="x">RAČUN</pre>');

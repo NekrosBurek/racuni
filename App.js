@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, AppState, Button, FlatList, Linking, Platform, Pressable, StatusBar, StyleSheet, Text, TextInput, Vibration, View,
+  ActivityIndicator, Alert, AppState, Button, FlatList, Linking, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, Vibration, View,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -15,7 +15,7 @@ import {
 import { findSettings, listFolders, saveSettings, findReceipt, listReceipts, uploadPdf } from './drive';
 import { REPO, APK_URL, VERSION, isNewer } from './version';
 import { saveLogin, restoreLogin, logout } from './auth';
-import { rowsFromLines, parsePaper, mergePaper, emptyPaper, paperReady } from './paper';
+import { rowsFromLines, parsePaper, mergePaper, emptyPaper, amount } from './paper';
 import { isAvailable as ocrAvailable, recognizeAsync } from './modules/text-scanner';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -326,27 +326,26 @@ function Onboarding({ token, current, onFail, onDone, onCancel, onLogout }) {
   );
 }
 
-const PAPER_PHOTOS = 4;
-const FRAME_EVERY_MS = 700;
+const deleteFile = uri => { try { if (uri) new File(uri).delete(); } catch { /* already gone */ } };
+const pad2 = n => String(n).padStart(2, '0');
+const formatDay = d => (d ? `${pad2(d.getDate())}.${pad2(d.getMonth() + 1)}.${d.getFullYear()}` : '');
+const INVOICE_NUMBER = /^[A-Z0-9]{8}-[A-Z0-9]{8}-\d+$/;
 
-const deleteFile = uri => { try { new File(uri).delete(); } catch { /* already gone */ } };
+// "20.12.2025" (or with commas/spaces) -> Date at noon; null when it isn't a real date.
+function parseDay(text) {
+  const m = text.trim().match(/^(\d{1,2})\s*[.,/]\s*(\d{1,2})\s*[.,/]\s*(\d{4})\.?$/);
+  if (!m) return null;
+  const d = new Date(+m[3], +m[2] - 1, +m[1], 12);
+  return d.getDate() === +m[1] && d.getMonth() === +m[2] - 1 ? d : null;
+}
 
-// A receipt read from paper: the photos become the PDF, OCR'd fields fill the name and the duplicate check.
+// A receipt scanned from paper: Google's scanner made the PDF, the checked OCR fields name it.
 async function savePaperReceipt(token, settings, p) {
   const existing = await findReceipt(token, p.invoiceNumber);
   if (existing) throw Object.assign(new Error(`Već postoji: ${existing.name}`), { duplicate: true });
-  const images = await Promise.all(p.photos.map(uri => new File(uri).base64()));
-  const pdf = await Print.printToFileAsync({
-    html: `<html><head><meta charset="utf-8"></head><body style="margin:0">${images
-      .map(b => `<img src="data:image/jpeg;base64,${b}" style="display:block;width:100%;page-break-after:always">`)
-      .join('')}</body></html>`,
-    base64: true,
-  });
-  deleteFile(pdf.uri);
-  const total = p.total ?? p.items.reduce((s, i) => s + i.total, 0);
-  const receipt = { ...p, total };
-  const saved = await uploadPdf(token, settings.folder.id, fileName(settings.nameFormat, receipt), receipt, pdf.base64);
-  p.photos.forEach(deleteFile); // kept until the upload succeeded, so a retry still has them
+  const base64 = await new File(p.pdfUri).base64();
+  const saved = await uploadPdf(token, settings.folder.id, fileName(settings.nameFormat, p), p, base64);
+  [p.pdfUri, ...p.pages].forEach(deleteFile); // kept until the upload succeeded, so a retry still has them
   return saved.name;
 }
 
@@ -357,60 +356,84 @@ function Scanner({ token, settings, onFail, active }) {
   const [items, setItems] = useState([]); // newest first: { id, kind, title, text, receipt }
   const seen = useRef(new Set());
   const queue = useRef(Promise.resolve());
-  const camera = useRef(null);
-  const [mode, setMode] = useState('qr'); // 'qr' | 'paper'
-  const [paper, setPaper] = useState(emptyPaper());
-  const paperScan = useRef({ data: emptyPaper(), photos: [] });
+  // Paper receipt: Google's document scanner, then OCR, then a check by the user before saving.
+  const [reading, setReading] = useState(false);
+  const [review, setReview] = useState(null); // { pages, pdfUri, rows, data, form }
+  const [showText, setShowText] = useState(false);
+  const reviewRef = useRef(null);
+  reviewRef.current = review;
+  const discardFiles = r => r && [r.pdfUri, ...r.pages].forEach(deleteFile);
 
-  const resetPaper = useCallback(() => {
-    paperScan.current.photos.forEach(deleteFile);
-    paperScan.current = { data: emptyPaper(), photos: [] };
-    setPaper(emptyPaper());
-  }, []);
+  useEffect(() => () => discardFiles(reviewRef.current), []);
 
-  // Paper mode: grab a silent frame, read it, merge what it shows, and go again (live, like the QR scan).
-  useEffect(() => {
-    if (mode !== 'paper' || !active) return;
-    let stopped = false;
-    (async () => {
-      while (!stopped) {
-        const started = Date.now();
-        try {
-          const photo = await camera.current?.takePictureAsync({ quality: 0.5, shutterSound: false });
-          if (photo) {
-            const frame = parsePaper(rowsFromLines(await recognizeAsync(photo.uri)));
-            const scan = paperScan.current;
-            const merged = mergePaper(scan.data, frame);
-            const gained = JSON.stringify(merged) !== JSON.stringify(scan.data);
-            // Frames that added something make up the saved PDF.
-            if (!stopped && gained && scan.photos.length < PAPER_PHOTOS) scan.photos.push(photo.uri);
-            else deleteFile(photo.uri);
-            if (!stopped && gained) {
-              scan.data = merged;
-              setPaper(merged);
-            }
-          }
-        } catch {
-          // camera not ready yet or OCR failed on this frame: try the next one
-        }
-        await new Promise(r => setTimeout(r, Math.max(0, FRAME_EVERY_MS - (Date.now() - started))));
+  async function scanPaper() {
+    let result;
+    try {
+      result = await CameraView.scanDocumentAsync({ requestPdf: true });
+    } catch (e) {
+      onFail(e);
+      return;
+    }
+    if (!result?.pages?.length) return; // cancelled
+    if (!result.pdfUri) {
+      discardFiles({ pdfUri: null, pages: result.pages });
+      onFail(new Error('Skener nije napravio PDF. Pokušaj ponovo.'));
+      return;
+    }
+    setReading(true);
+    try {
+      let data = emptyPaper();
+      const rows = [];
+      for (const page of result.pages) {
+        const pageRows = rowsFromLines(await recognizeAsync(page));
+        rows.push(...pageRows);
+        data = mergePaper(data, parsePaper(pageRows));
       }
-    })();
-    return () => { stopped = true; };
-  }, [mode, active]);
+      setShowText(false);
+      setReview({
+        pages: result.pages,
+        pdfUri: result.pdfUri,
+        rows,
+        data,
+        form: {
+          invoiceNumber: data.invoiceNumber ?? '',
+          date: formatDay(data.date),
+          total: data.total !== null ? data.total.toFixed(2).replace('.', ',') : '',
+          shop: data.shop,
+        },
+      });
+    } catch (e) {
+      discardFiles({ pdfUri: result.pdfUri, pages: result.pages });
+      onFail(e);
+    } finally {
+      setReading(false);
+    }
+  }
 
-  useEffect(() => () => paperScan.current.photos.forEach(deleteFile), []);
+  const setField = (key, value) => setReview(r => ({ ...r, form: { ...r.form, [key]: value } }));
+  const form = review?.form;
+  const invoiceOk = form && INVOICE_NUMBER.test(form.invoiceNumber.trim().toUpperCase());
+  const dateOk = form && !!parseDay(form.date);
+  const totalOk = form && (!form.total.trim() || !isNaN(amount(form.total)));
+
+  function discardPaper() {
+    discardFiles(review);
+    setReview(null);
+  }
 
   function savePaper() {
-    const { data, photos } = paperScan.current;
-    paperScan.current = { data: emptyPaper(), photos: [] }; // the photos now belong to the queued save
-    setPaper(emptyPaper());
-    const id = `paper:${data.invoiceNumber}`;
-    if (seen.current.has(id)) { photos.forEach(deleteFile); return; }
+    const { data, pages, pdfUri } = review;
+    const invoiceNumber = form.invoiceNumber.trim().toUpperCase();
+    // Keep the scanned time when the day wasn't changed.
+    const date = form.date === formatDay(data.date) ? data.date : parseDay(form.date);
+    const total = form.total.trim() ? amount(form.total) : data.items.reduce((s, i) => s + i.total, 0);
+    setReview(null);
+    const id = `paper:${invoiceNumber}`;
+    if (seen.current.has(id)) { discardFiles({ pages, pdfUri }); return; }
     seen.current.add(id);
     Vibration.vibrate(40);
-    const r = { ...data, photos };
-    const title = `${(data.total ?? 0).toFixed(2)} RSD · ${data.date.toLocaleDateString('sr-RS')} · papir`;
+    const r = { ...data, invoiceNumber, date, total, shop: form.shop.trim(), pages, pdfUri };
+    const title = `${total.toFixed(2)} RSD · ${date.toLocaleDateString('sr-RS')} · papir`;
     setItems(list => [{ id, kind: 'wait', title, text: 'Čeka…', receipt: r }, ...list]);
     enqueue(id, r);
   }
@@ -421,7 +444,7 @@ function Scanner({ token, settings, onFail, active }) {
   function enqueue(id, r) {
     update(id, { kind: 'wait', text: 'Čeka…' });
     queue.current = queue.current
-      .then(() => (r.photos ? savePaperReceipt : saveReceipt)(token, settings, r))
+      .then(() => (r.pdfUri ? savePaperReceipt : saveReceipt)(token, settings, r))
       .then(
         name => update(id, { kind: 'ok', text: name }),
         e => {
@@ -460,37 +483,40 @@ function Scanner({ token, settings, onFail, active }) {
   const count = k => items.filter(i => i.kind === k).length;
   return (
     <View style={{ flex: 1 }}>
-      <CameraView
-        ref={camera}
-        style={{ flex: 1 }}
-        barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-        onBarcodeScanned={onScan}
-      />
-      {ocrAvailable && (
-        <View style={styles.modes}>
-          {[['qr', 'QR kod'], ['paper', 'Račun bez QR']].map(([key, label]) => (
-            <Pressable
-              key={key}
-              style={[styles.mode, mode === key && styles.modeOn]}
-              onPress={() => { if (key !== mode) { resetPaper(); setMode(key); } }}>
-              <Text style={[styles.modeText, mode === key && styles.modeTextOn]}>{label}</Text>
-            </Pressable>
-          ))}
-        </View>
+      <CameraView style={{ flex: 1 }} barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={onScan} />
+      {ocrAvailable && CameraView.isDocumentScannerAvailable && !review && (
+        <Pressable style={styles.scanPaper} onPress={scanPaper} disabled={reading}>
+          {reading && <ActivityIndicator color="#fff" />}
+          <Text style={styles.scanPaperText}>{reading ? 'Čitam račun…' : '📄 Račun bez QR'}</Text>
+        </Pressable>
       )}
-      {mode === 'paper' && (
-        <View style={styles.paper}>
-          <Text style={styles.rowTitle}>Polako pomeraj kameru niz ceo račun</Text>
-          <Text>Broj: {paper.invoiceNumber ?? '…'}</Text>
-          <Text>Datum: {paper.date ? paper.date.toLocaleString('sr-RS') : '…'}</Text>
-          <Text>Iznos: {paper.total !== null ? `${paper.total.toFixed(2)} RSD` : '…'}</Text>
-          <Text>Radnja: {paper.shop || '…'}</Text>
-          <Text>Artikli: {paper.items.length}</Text>
+      {review && (
+        <ScrollView style={styles.paper} keyboardShouldPersistTaps="handled">
+          <Text style={styles.rowTitle}>Proveri pročitano (artikala: {review.data.items.length})</Text>
+          {[
+            ['invoiceNumber', 'PFR broj računa', invoiceOk, 'characters'],
+            ['date', 'Datum (dd.mm.gggg)', dateOk, 'none'],
+            ['total', 'Iznos (RSD)', totalOk, 'none'],
+            ['shop', 'Radnja', true, 'characters'],
+          ].map(([key, label, ok, caps]) => (
+            <View key={key}>
+              <Text style={styles.hint}>{label}</Text>
+              <TextInput
+                style={[styles.input, !ok && styles.inputBad]}
+                value={form[key]}
+                onChangeText={v => setField(key, v)}
+                autoCapitalize={caps}
+                keyboardType={key === 'date' || key === 'total' ? 'numbers-and-punctuation' : 'default'}
+              />
+            </View>
+          ))}
           <View style={styles.paperButtons}>
-            <Button title="Sačuvaj" disabled={!paperReady(paper)} onPress={savePaper} />
-            <Button title="Poništi" color="#888" onPress={resetPaper} />
+            <Button title="Sačuvaj" disabled={!(invoiceOk && dateOk && totalOk)} onPress={savePaper} />
+            <Button title="Odbaci" color="#888" onPress={discardPaper} />
           </View>
-        </View>
+          <Button title={showText ? 'Sakrij pročitan tekst' : 'Prikaži pročitan tekst'} color="#888" onPress={() => setShowText(s => !s)} />
+          {showText && <Text selectable style={styles.ocrText}>{review.rows.join('\n') || '(ništa nije pročitano)'}</Text>}
+        </ScrollView>
       )}
       <View style={styles.sheet}>
         <Text style={styles.summary}>
@@ -585,12 +611,11 @@ const styles = StyleSheet.create({
   err: { color: '#c62828' },
   errorBar: { position: 'absolute', left: 12, right: 12, bottom: 24, padding: 14, borderRadius: 10, backgroundColor: '#c62828' },
   errorText: { color: '#fff' },
-  modes: { position: 'absolute', top: 12, alignSelf: 'center', flexDirection: 'row', backgroundColor: '#0008', borderRadius: 20, padding: 3 },
-  mode: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 17 },
-  modeOn: { backgroundColor: '#fff' },
-  modeText: { color: '#fff', fontWeight: '600' },
-  modeTextOn: { color: '#000' },
-  paper: { position: 'absolute', top: 60, left: 12, right: 12, padding: 12, borderRadius: 10, backgroundColor: '#fffe', gap: 2 },
+  scanPaper: { position: 'absolute', top: 12, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#000a', borderRadius: 20, paddingVertical: 8, paddingHorizontal: 16 },
+  scanPaperText: { color: '#fff', fontWeight: '600' },
+  inputBad: { borderColor: '#c62828', borderWidth: 2 },
+  ocrText: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 11, marginTop: 6 },
+  paper: { position: 'absolute', top: 12, bottom: 12, left: 12, right: 12, padding: 12, borderRadius: 10, backgroundColor: '#fff', zIndex: 2, elevation: 4 },
   paperButtons: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
   updateBar: { position: 'absolute', left: 12, right: 12, bottom: 24, padding: 14, borderRadius: 10, backgroundColor: '#1565c0', flexDirection: 'row', alignItems: 'center', gap: 10 },
 });
