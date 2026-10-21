@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, AppState, Button, FlatList, Linking, Pressable, StatusBar, StyleSheet, Text, TextInput, Vibration, View,
+  ActivityIndicator, Alert, AppState, Button, FlatList, Linking, Platform, Pressable, StatusBar, StyleSheet, Text, TextInput, Vibration, View,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -14,12 +14,15 @@ import {
 } from './receipt';
 import { findSettings, listFolders, saveSettings, findReceipt, listReceipts, uploadPdf } from './drive';
 import { REPO, APK_URL, VERSION, isNewer } from './version';
+import { saveLogin, restoreLogin, logout } from './auth';
 
 WebBrowser.maybeCompleteAuthSession();
 
 // OAuth client IDs from Google Cloud Console (see README.md).
 const ANDROID_CLIENT_ID = '21750469073-f08lm2v1en0kmgat0qg5pqh65d9ie17n.apps.googleusercontent.com';
 const IOS_CLIENT_ID = 'PASTE-IOS-CLIENT-ID.apps.googleusercontent.com';
+const CLIENT_ID = Platform.OS === 'ios' ? IOS_CLIENT_ID : ANDROID_CLIENT_ID;
+const REFRESH_EARLY_MS = 5 * 60 * 1000;
 
 const CHECK_EVERY_MS = 60 * 60 * 1000;
 const UPDATE_FILE = 'racuni-update.apk';
@@ -122,8 +125,14 @@ async function saveReceipt(token, settings, r) {
 }
 
 export default function App() {
-  // Only the access token lives here (in memory); folder and name format are read back from Drive.
-  const [token, setToken] = useState(null);
+  // The access token lives in memory; auth.js keeps the refresh token so the sign-in survives restarts.
+  // Folder and name format are read back from Drive.
+  const [session, setSession] = useState(null); // { accessToken, expiresAt }
+  const [restoring, setRestoring] = useState(true);
+  const token = session?.accessToken ?? null;
+  const signedIn = !!token;
+  const tokenRef = useRef(null);
+  tokenRef.current = token;
   const [settings, setSettings] = useState(undefined); // undefined = loading, null = onboarding needed
   const [editing, setEditing] = useState(false);
   const [tab, setTab] = useState('scan');
@@ -137,22 +146,57 @@ export default function App() {
   const downloading = useUpdates();
 
   useEffect(() => {
-    if (response?.type === 'success') setToken(response.authentication.accessToken);
+    if (response?.type === 'success') saveLogin(response.authentication).then(setSession, e => setError(e.message));
   }, [response]);
 
-  const fail = useCallback(e => {
-    if (e.message.includes('istekla')) setToken(null);
-    setError(e.message);
+  // Silent sign-in from the stored refresh token; offline keeps it for the next try.
+  const refresh = useCallback(async () => {
+    try {
+      setSession(await restoreLogin(CLIENT_ID));
+    } catch {
+      setError('Nema veze sa Google-om. Proveri internet.');
+    }
   }, []);
 
+  useEffect(() => { refresh().finally(() => setRestoring(false)); }, [refresh]);
+
+  // Renew shortly before the hour runs out; timers stop in the background, so check again on return.
   useEffect(() => {
-    if (!token) return;
+    if (!session) return;
+    const due = () => session.expiresAt - Date.now() - REFRESH_EARLY_MS;
+    const timer = setTimeout(refresh, Math.max(0, due()));
+    const sub = AppState.addEventListener('change', s => { if (s === 'active' && due() <= 0) refresh(); });
+    return () => { clearTimeout(timer); sub.remove(); };
+  }, [session, refresh]);
+
+  const fail = useCallback(e => {
+    if (e.message.includes('istekla')) {
+      // Renew quietly; if that fails the session ends and the sign-in screen shows.
+      refresh();
+      setError('Prijava je obnovljena. Pokušaj ponovo.');
+      return;
+    }
+    setError(e.message);
+  }, [refresh]);
+
+  const signOut = useCallback(async () => {
+    await logout();
+    setSession(null);
     setSettings(undefined);
-    findSettings(token).then(setSettings, fail);
-  }, [token, fail]);
+    setEditing(false);
+  }, []);
+
+  // Keyed on being signed in, not on the token, so an hourly renewal doesn't reload the screen.
+  useEffect(() => {
+    if (!signedIn) return;
+    setSettings(undefined);
+    findSettings(tokenRef.current).then(setSettings, fail);
+  }, [signedIn, fail]);
 
   let screen;
-  if (!token) {
+  if (restoring) {
+    screen = <View style={styles.center}><ActivityIndicator size="large" /></View>;
+  } else if (!token) {
     screen = (
       <View style={styles.center}>
         <Text style={styles.title}>Računi</Text>
@@ -170,6 +214,7 @@ export default function App() {
         onFail={fail}
         onDone={s => { setSettings(s); setEditing(false); }}
         onCancel={settings ? () => setEditing(false) : null}
+        onLogout={signOut}
       />
     );
   } else {
@@ -212,7 +257,7 @@ export default function App() {
   );
 }
 
-function Onboarding({ token, current, onFail, onDone, onCancel }) {
+function Onboarding({ token, current, onFail, onDone, onCancel, onLogout }) {
   const [folders, setFolders] = useState(null);
   const [folder, setFolder] = useState(current?.folder ?? null);
   const [newFolderName, setNewFolderName] = useState('');
@@ -274,6 +319,7 @@ function Onboarding({ token, current, onFail, onDone, onCancel }) {
 
       <Button title={saving ? 'Čuvam…' : 'Sačuvaj'} disabled={!canSave} onPress={save} />
       {onCancel && <Button title="Odustani" color="#888" onPress={onCancel} />}
+      <Button title="Odjavi se" color="#c62828" onPress={onLogout} />
     </View>
   );
 }
