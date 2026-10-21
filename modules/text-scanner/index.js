@@ -1,6 +1,6 @@
-import { requireOptionalNativeModule } from 'expo';
+import { requireNativeView, requireOptionalNativeModule } from 'expo';
 
-// On-device text recognition (Google ML Kit, Latin script) for paper receipts; null where it isn't built in.
+// On-device text recognition (Google ML Kit, Latin script) and an in-app receipt camera; null where not built in.
 const TextScanner = requireOptionalNativeModule('TextScanner');
 
 export const isAvailable = !!TextScanner;
@@ -9,3 +9,6 @@ export const isAvailable = !!TextScanner;
 export function recognizeAsync(uri) {
   return TextScanner.recognizeAsync(uri);
 }
+
+// <ReceiptCamera ref torch onFocus={({ nativeEvent: { x, y } }) => …} onReady />; ref.current.takePictureAsync() -> file URI.
+export const ReceiptCamera = isAvailable ? requireNativeView('TextScanner') : null;

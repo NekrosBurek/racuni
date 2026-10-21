@@ -46,5 +46,17 @@ class TextScannerModule : Module() {
         }
         .addOnFailureListener { e -> promise.reject(CodedException("ERR_RECOGNIZE", e.message, e)) }
     }
+
+    View(ReceiptCameraView::class) {
+      Events("onFocus", "onReady")
+
+      Prop("torch") { view: ReceiptCameraView, on: Boolean ->
+        view.setTorch(on)
+      }
+
+      AsyncFunction("takePictureAsync") { view: ReceiptCameraView, promise: Promise ->
+        view.takePicture(promise)
+      }
+    }
   }
 }

@@ -104,7 +104,7 @@ assert.deepEqual(specificationItems({ success: true, items: [{ name: 'TERMOSTAT'
 assert.deepEqual(specificationItems({ success: false }), []);
 
 // Paper receipts read by OCR (Latin model, so Cyrillic labels come out garbled as below).
-const { rowsFromLines, parsePaper, mergePaper, emptyPaper, paperReady } = await import('./paper.js');
+const { rowsFromLines, parsePaper, mergePaper, emptyPaper, paperReady, fixDigits, formatPfrTime, parsePfrTime } = await import('./paper.js');
 const box = (text, left, top) => ({ text, left, top, right: left + 100, bottom: top + 20 });
 assert.deepEqual(rowsFromLines([box('4.400,00', 300, 102), box('Ykynah n3hoc:', 10, 100), box('NNb: 105278961', 10, 40)]),
   ['NNb: 105278961', 'Ykynah n3hoc: 4.400,00']);
@@ -171,6 +171,42 @@ assert.equal(summed.total, 1376);
 assert.equal(parsePaper(['31.13.2025 10:00']).date, null);
 assert.equal(parsePaper(['01.01.1999 10:00']).date, null);
 assert.equal(parsePaper(['20.12.2025.']).date.getDate(), 20);
+
+// Counter "26915/27982ПП": garbled suffix normalized, confirmed by the PFR number; ESIR "444/1.0" is not a counter.
+const counted = parsePaper(['ECNP 6poj: 444/1.0', 'NOP 6poj payyha: DFY7QVSV-DFY7QVSV-27982', 'Bpojay payyha: 26915/27982NN']);
+assert.equal(counted.counter, '26915/27982ПП');
+assert.equal(counted.counterSure, true);
+assert.equal(parsePaper(['Bpojay payyha: 12/40NP']).counter, '12/40ПР');
+assert.equal(parsePaper(['Bpojay payyha: 26915 / 27982']).counter, '26915/27982ПП');
+assert.equal(parsePaper(['ECNP 6poj: 444/1.0']).counter, null);
+assert.equal(mergePaper(parsePaper(['1/5NN']), counted).counter, '26915/27982ПП');
+// Look-alike letters in dates, two-digit years before a time, date and time on separate rows.
+assert.equal(fixDigits('2O.12.2O25. O9:57:l6'), '20.12.2025. 09:57:16');
+assert.equal(fixDigits('NOP Bpeme:'), 'NOP Bpeme:');
+const lookalike = parsePaper(['NOP Bpeme: 2O.12.2O25. O9:57:l6']).date;
+assert.equal(formatPfrTime(lookalike), '20.12.2025. 09:57:16');
+assert.equal(formatPfrTime(parsePaper(['NOP Bpeme: 20.12.25 09:57:16']).date), '20.12.2025. 09:57:16');
+assert.equal(formatPfrTime(parsePaper(['NOP Bpeme: 20.12.2025.', '09:57:16']).date), '20.12.2025. 09:57:16');
+assert.equal(parsePaper(['3a ynnaTy: 20.12.25']).date, null); // a short year without a time is ignored
+assert.equal(formatPfrTime(parsePfrTime('20.12.2025. 09:57:16')), '20.12.2025. 09:57:16');
+assert.equal(formatPfrTime(parsePfrTime('20.12.2025 9:57')), '20.12.2025. 09:57:00');
+assert.equal(parsePfrTime('31.02.2025. 09:57:16'), null);
+assert.equal(parsePfrTime('20.12.2025.'), null);
+
+// No-QR verification form: values in every format, a script that parses, and recognizing the result page.
+const { verifyValues, verifyScript, verifiedReceipt } = await import('./verifyFill.js');
+const vv = verifyValues({ invoiceNumber: 'DFY7QVSV-DFY7QVSV-27982', counter: '26915/27982ПП', date: new Date(2025, 11, 20, 9, 57, 16), total: 4400 });
+assert.deepEqual(vv.total, { text: '4.400,00', number: '4400.00' });
+assert.deepEqual(vv.time, { text: '20.12.2025. 09:57:16', datetime: '2025-12-20T09:57:16', date: '2025-12-20', time: '09:57:16' });
+const script = verifyScript(vv);
+new Function(script); // must be valid JavaScript
+assert.ok(script.includes('"26915/27982ПП"') && script.includes('бројач') && script.includes('ReactNativeWebView'));
+assert.ok(script.indexOf('"counter"') < script.indexOf('"invoiceNumber",'), 'the counter is matched before the invoice number');
+assert.deepEqual(verifiedReceipt({ href: `https://suf.purs.gov.rs/v/?vl=${vl}`, html: '' }, 'DFY7QVSV-DFY7QVSV-27982'),
+  { url: `https://suf.purs.gov.rs/v/?vl=${vl}` });
+const resultPage = '<html><pre>==== ФИСКАЛНИ РАЧУН ====\nПФР број рачуна: DFY7QVSV-DFY7QVSV-27982</pre></html>';
+assert.equal(verifiedReceipt({ href: 'https://suf.purs.gov.rs/verify', html: resultPage }, 'DFY7QVSV-DFY7QVSV-27982').html, resultPage);
+assert.equal(verifiedReceipt({ href: 'https://suf.purs.gov.rs/verify', html: '<form>Провери</form>' }, 'DFY7QVSV-DFY7QVSV-27982'), null);
 
 assert.throws(() => parseReceiptUrl('https://example.com/?vl=abc'), /nije QR/);
 assert.throws(() => parseReceiptUrl('hello'), /nije link/);
