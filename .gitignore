@@ -3,7 +3,7 @@
 # dependencies
 node_modules/
 
-# Expo
+# Build tooling cache
 .expo/
 dist/
 web-build/

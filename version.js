@@ -1,3 +1,6 @@
+// CI writes the build's version here (see .github/workflows/build.yml).
+export const VERSION = '1.0.0';
+
 export const REPO = 'NekrosBurek/racuni';
 export const APK_URL = `https://github.com/${REPO}/releases/latest/download/racuni.apk`;
 
