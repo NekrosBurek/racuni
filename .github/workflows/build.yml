@@ -1,0 +1,57 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - run: npm ci
+      - run: node receipt.test.mjs
+
+      # The app's updater compares this version with the latest release tag.
+      - name: Set version 1.0.${{ github.run_number }}
+        run: |
+          jq --argjson n ${{ github.run_number }} '.expo.version = "1.0.\($n)" | .expo.android.versionCode = $n' app.json > app.tmp.json
+          mv app.tmp.json app.json
+
+      - run: npx expo prebuild --platform android --no-install
+      - run: ./gradlew assembleRelease --no-daemon
+        working-directory: android
+
+      # Re-sign with our own key so every release installs over the previous one.
+      - name: Sign APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" sign --ks release.keystore --ks-pass env:KEYSTORE_PASSWORD \
+            --out racuni.apk android/app/build/outputs/apk/release/app-release.apk
+          "$BT/apksigner" verify racuni.apk
+          rm release.keystore
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v1.0.${{ github.run_number }}" racuni.apk \
+            --title "Računi 1.0.${{ github.run_number }}" \
+            --notes "${{ github.event.head_commit.message || 'Ručni build' }}"
