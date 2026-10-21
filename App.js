@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Button, FlatList, Linking, Pressable, StyleSheet, Text, TextInput, Vibration, View,
+  ActivityIndicator, Alert, Button, FlatList, Linking, Pressable, StatusBar, StyleSheet, Text, TextInput, Vibration, View,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { StatusBar } from 'expo-status-bar';
-import Constants from 'expo-constants';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
@@ -12,7 +10,7 @@ import * as Print from 'expo-print';
 import { File } from 'expo-file-system';
 import { parseReceiptUrl, extractJournal, shopName, fileName, DEFAULT_FORMAT, FORMAT_TOKENS } from './receipt';
 import { findSettings, listFolders, saveSettings, findReceipt, listReceipts, uploadPdf } from './drive';
-import { REPO, APK_URL, isNewer } from './version';
+import { REPO, APK_URL, VERSION, isNewer } from './version';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -26,7 +24,7 @@ async function checkForUpdate() {
     const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`);
     if (!res.ok) return;
     const latest = (await res.json()).tag_name.replace(/^v/, '');
-    if (!isNewer(latest, Constants.expoConfig?.version)) return;
+    if (!isNewer(latest, VERSION)) return;
     Alert.alert('Nova verzija', `Dostupna je verzija ${latest}.`, [
       { text: 'Kasnije', style: 'cancel' },
       { text: 'Preuzmi', onPress: () => Linking.openURL(APK_URL) },
@@ -38,7 +36,7 @@ async function checkForUpdate() {
 
 async function saveReceipt(token, settings, r) {
   const existing = await findReceipt(token, r.invoiceNumber);
-  if (existing) throw Object.assign(new Error(`VeÄ‡ postoji: ${existing.name}`), { duplicate: true });
+  if (existing) throw Object.assign(new Error(`Već postoji: ${existing.name}`), { duplicate: true });
   const journal = extractJournal(await (await fetch(r.url)).text());
   const receipt = { ...r, shop: shopName(journal) };
   const pdf = await Print.printToFileAsync({
@@ -84,9 +82,9 @@ export default function App() {
   if (!token) {
     screen = (
       <View style={styles.center}>
-        <Text style={styles.title}>RaÄuni</Text>
-        <Text style={styles.hint}>Korak 1 od 2: poveÅ¾i Google nalog na kom ÄuvaÅ¡ raÄune.</Text>
-        <Button title="PoveÅ¾i Google nalog" disabled={!request} onPress={() => { setError(null); promptAsync(); }} />
+        <Text style={styles.title}>Računi</Text>
+        <Text style={styles.hint}>Korak 1 od 2: poveži Google nalog na kom čuvaš račune.</Text>
+        <Button title="Poveži Google nalog" disabled={!request} onPress={() => { setError(null); promptAsync(); }} />
       </View>
     );
   } else if (settings === undefined) {
@@ -105,13 +103,13 @@ export default function App() {
     screen = (
       <View style={{ flex: 1 }}>
         <View style={styles.tabs}>
-          {[['scan', 'Skeniraj'], ['list', 'RaÄuni']].map(([key, label]) => (
+          {[['scan', 'Skeniraj'], ['list', 'Računi']].map(([key, label]) => (
             <Pressable key={key} style={[styles.tab, tab === key && styles.tabOn]} onPress={() => setTab(key)}>
               <Text style={[styles.tabText, tab === key && styles.tabTextOn]}>{label}</Text>
             </Pressable>
           ))}
           <Pressable style={styles.tab} onPress={() => setEditing(true)}>
-            <Text style={styles.tabText}>âš™</Text>
+            <Text style={styles.tabText}>⚙</Text>
           </Pressable>
         </View>
         <Scanner token={token} settings={settings} onFail={fail} active={tab === 'scan'} />
@@ -126,10 +124,10 @@ export default function App() {
       {screen}
       {error && (
         <Pressable style={styles.errorBar} onPress={() => setError(null)}>
-          <Text style={styles.errorText}>{error} (dodirni da zatvoriÅ¡)</Text>
+          <Text style={styles.errorText}>{error} (dodirni da zatvoriš)</Text>
         </Pressable>
       )}
-      <StatusBar style="dark" />
+      <StatusBar barStyle="dark-content" />
     </SafeAreaView>
     </SafeAreaProvider>
   );
@@ -162,7 +160,7 @@ function Onboarding({ token, current, onFail, onDone, onCancel }) {
   return (
     <View style={styles.page}>
       <Text style={styles.h2}>Korak 2 od 2: folder na Drive-u</Text>
-      <Text style={styles.hint}>Ovde se Äuvaju skenirani raÄuni i odavde se prikazuju.</Text>
+      <Text style={styles.hint}>Ovde se čuvaju skenirani računi i odavde se prikazuju.</Text>
       <View style={styles.folderBox}>
         {folders === null ? <ActivityIndicator /> : (
           <FlatList
@@ -173,7 +171,7 @@ function Onboarding({ token, current, onFail, onDone, onCancel }) {
               <Pressable
                 style={[styles.folderRow, folder?.id === item.id && styles.folderOn]}
                 onPress={() => { setFolder(item); setNewFolderName(''); }}>
-                <Text>ðŸ“ {item.name}</Text>
+                <Text>📁 {item.name}</Text>
               </Pressable>
             )}
           />
@@ -181,7 +179,7 @@ function Onboarding({ token, current, onFail, onDone, onCancel }) {
       </View>
       <TextInput
         style={styles.input}
-        placeholder="â€¦ili ime novog foldera"
+        placeholder="…ili ime novog foldera"
         value={newFolderName}
         onChangeText={t => { setNewFolderName(t); if (t) setFolder(null); }}
       />
@@ -191,13 +189,13 @@ function Onboarding({ token, current, onFail, onDone, onCancel }) {
       <Text style={styles.hint}>Polja: {FORMAT_TOKENS}</Text>
       <Text style={styles.hint}>Primer: {example}</Text>
 
-      <Button title={saving ? 'ÄŒuvamâ€¦' : 'SaÄuvaj'} disabled={!canSave} onPress={save} />
+      <Button title={saving ? 'Čuvam…' : 'Sačuvaj'} disabled={!canSave} onPress={save} />
       {onCancel && <Button title="Odustani" color="#888" onPress={onCancel} />}
     </View>
   );
 }
 
-const KIND_ICON = { wait: 'â³', ok: 'âœ…', dup: 'âš ï¸', err: 'âŒ' };
+const KIND_ICON = { wait: '⏳', ok: '✅', dup: '⚠️', err: '❌' };
 
 function Scanner({ token, settings, onFail, active }) {
   const [permission, requestPermission] = useCameraPermissions();
@@ -209,7 +207,7 @@ function Scanner({ token, settings, onFail, active }) {
 
   // Saves run one at a time so the duplicate check always sees the previous upload.
   function enqueue(id, r) {
-    update(id, { kind: 'wait', text: 'ÄŒekaâ€¦' });
+    update(id, { kind: 'wait', text: 'Čeka…' });
     queue.current = queue.current
       .then(() => saveReceipt(token, settings, r))
       .then(
@@ -232,8 +230,8 @@ function Scanner({ token, settings, onFail, active }) {
       setItems(list => [{ id: data, kind: 'err', title: 'Nepoznat QR', text: e.message }, ...list]);
       return;
     }
-    const title = `${r.total.toFixed(2)} RSD Â· ${isNaN(r.date) ? '' : r.date.toLocaleDateString('sr-RS')}`;
-    setItems(list => [{ id: data, kind: 'wait', title, text: 'ÄŒekaâ€¦', receipt: r }, ...list]);
+    const title = `${r.total.toFixed(2)} RSD · ${isNaN(r.date) ? '' : r.date.toLocaleDateString('sr-RS')}`;
+    setItems(list => [{ id: data, kind: 'wait', title, text: 'Čeka…', receipt: r }, ...list]);
     enqueue(data, r);
   }
 
@@ -254,8 +252,8 @@ function Scanner({ token, settings, onFail, active }) {
       <View style={styles.sheet}>
         <Text style={styles.summary}>
           {items.length === 0
-            ? `Skeniraj raÄune jedan za drugim Â· ${settings.folder.name}`
-            : `âœ… ${count('ok')}   âš ï¸ ${count('dup')}   âŒ ${count('err')}   â³ ${count('wait')}`}
+            ? `Skeniraj račune jedan za drugim · ${settings.folder.name}`
+            : `✅ ${count('ok')}   ⚠️ ${count('dup')}   ❌ ${count('err')}   ⏳ ${count('wait')}`}
         </Text>
         <FlatList
           data={items}
@@ -269,7 +267,7 @@ function Scanner({ token, settings, onFail, active }) {
               <View style={{ flex: 1 }}>
                 <Text style={styles.rowTitle}>{item.title}</Text>
                 <Text style={styles[item.kind]} numberOfLines={2}>
-                  {item.text}{item.kind === 'err' && item.receipt ? ' Â· dodirni za ponovo' : ''}
+                  {item.text}{item.kind === 'err' && item.receipt ? ' · dodirni za ponovo' : ''}
                 </Text>
               </View>
             </Pressable>
@@ -299,9 +297,9 @@ function ReceiptList({ token, settings, onFail }) {
       refreshing={loading}
       onRefresh={load}
       ListHeaderComponent={files && (
-        <Text style={styles.summary}>{files.length} raÄuna Â· ukupno {total.toFixed(2)} RSD</Text>
+        <Text style={styles.summary}>{files.length} računa · ukupno {total.toFixed(2)} RSD</Text>
       )}
-      ListEmptyComponent={!loading && <Text style={[styles.hint, { padding: 24 }]}>Nema raÄuna u folderu.</Text>}
+      ListEmptyComponent={!loading && <Text style={[styles.hint, { padding: 24 }]}>Nema računa u folderu.</Text>}
       renderItem={({ item }) => (
         <Pressable style={styles.row} onPress={() => Linking.openURL(item.webViewLink)}>
           <View style={{ flex: 1 }}>
