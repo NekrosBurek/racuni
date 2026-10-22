@@ -68,7 +68,9 @@ export function itemLabel(name) {
     .replace(/_\d+/g, ' ')
     .replace(/\/\s*\S{1,4}\.?(?=\s|$)/g, ' ')
     .split(/\s+/)
-    .filter(w => w && !/\d/.test(w) && (w.length > 2 || /^(i|u|sa|za|na|od|do)$/i.test(w)));
+    .map(w => w.replace(/[,.;:]+$/, '')) // "stanica,"
+    .filter(w => w && !/\d/.test(w) && !/^(kom|kg|gr|ml|lit|pak|kut)$/i.test(w)
+      && (w.length > 2 || /^(i|u|sa|za|na|od|do)$/i.test(w)));
   const text = words.join(' ').toLowerCase();
   return text.charAt(0).toUpperCase() + text.slice(1);
 }

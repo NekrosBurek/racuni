@@ -46,8 +46,9 @@ export default function RenameExisting({ token, folder, format, onFail }) {
         Alert.alert('Nema promena', 'Svi računi već imaju ime po ovom formatu.');
         return;
       }
-      const examples = plan.slice(0, 3).map(p => `${p.from}\n→ ${p.to}`).join('\n\n');
-      Alert.alert(`Preimenovati ${plan.length} računa?`, examples + (plan.length > 3 ? '\n\n…' : ''), [
+      // The whole list, so every new name can be checked before anything changes (the dialog scrolls).
+      const list = plan.map(p => `${p.from.replace(/\.pdf$/, '')}\n→ ${p.to.replace(/\.pdf$/, '')}`).join('\n\n');
+      Alert.alert(`Preimenovati ${plan.length} računa?`, list, [
         { text: 'Otkaži', style: 'cancel' },
         { text: 'Preimenuj', onPress: () => apply(plan, described) },
       ]);
