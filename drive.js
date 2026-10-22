@@ -86,7 +86,8 @@ export function uploadPdf(token, folderId, name, r, base64) {
 // Moves a receipt to the Drive trash, so a mistaken delete can still be undone from Drive.
 export const trashReceipt = (token, id) => patch(token, id, { trashed: true });
 
-export const setReceiptData = (token, id, appProperties) => patch(token, id, { appProperties });
+export const setReceiptData = (token, id, appProperties, description) =>
+  patch(token, id, description ? { appProperties, description } : { appProperties });
 
 // New name, and the stored naming data when it had to be read from the PDF.
 export const renameReceipt = (token, id, name, description) => patch(token, id, description ? { name, description } : { name });

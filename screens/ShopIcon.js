@@ -21,6 +21,10 @@ export function ShopIcon({ receipt, size = 38, dark }) {
       </View>
     );
   }
+  if (receipt.shopGuessed) {
+    // The shop isn't known yet ("Dopuni" reads it from the PDF): a receipt sign rather than an item's initials.
+    return <View style={[box, { backgroundColor: dark ? '#23272e' : '#f0f2f5' }]}><Text style={{ fontSize: size * 0.5 }}>🧾</Text></View>;
+  }
   const h = shopHue(receipt.shop || receipt.name || '?');
   return (
     <View style={[box, { backgroundColor: `hsl(${h}, 55%, ${dark ? 28 : 90}%)` }]}>

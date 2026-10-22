@@ -47,7 +47,8 @@ export function receiptInfo(file) {
     thumb: file.thumbnailLink ? file.thumbnailLink.replace(/=s\d+$/, '=s600') : null,
     // Saved by this app: has the data that duplicates and totals rely on.
     complete: !!p.invoiceNumber && total !== null,
-    checked: p.checked === '1', // older file already read once by "Dopuni podatke"
+    // Older file already read once by "Dopuni" with the current reader; '1' was an earlier reader that missed shops.
+    checked: p.checked === '2',
     // Set by the user in the receipt view (see plans.js).
     warrantyMonths: Number(p.warranty) || 0,
     installments: Number(p.rate) || 0,

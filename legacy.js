@@ -2,6 +2,7 @@
 // (drive.js pdfText), and the fields are found by their shape, since the PURS page prints labels and values in
 // separate columns.
 import { amount } from './paper.js';
+import { shopName, placeName } from './receipt.js';
 
 const INVOICE = /\b([A-Z0-9]{8})-([A-Z0-9]{8})-?\s*(\d{1,10})\b/;
 const DATE_TIME = /(\d{1,2})\.(\d{1,2})\.(\d{4})\.?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?/;
@@ -24,7 +25,7 @@ export function legacyFields(text) {
   const money = (label >= 0 ? text.slice(label) : text).match(MONEY);
   if (money) out.total = amount(money[0]);
 
-  out.shop = text.match(/(?:Предузеће|Preduzeće|Preduzece)\s*:\s*([^\n]+)/i)?.[1].trim() ?? '';
-  out.place = text.match(/(?:Место продаје|Mesto prodaje)\s*:\s*([^\n]+)/i)?.[1].trim() ?? '';
+  out.shop = shopName(text);
+  out.place = placeName(text);
   return out;
 }
