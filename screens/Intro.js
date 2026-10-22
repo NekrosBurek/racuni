@@ -1,6 +1,7 @@
 // First-run walkthrough: what the app does, where receipts go, and how to scan with or without a QR code.
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
+import { makeStyles, useTheme } from '../theme';
 
 const SLIDES = [
   { icon: '🧾', title: 'Računi na jednom mestu', text: 'Skeniraš QR kod sa fiskalnog računa i aplikacija preuzme overen račun sa sajta Poreske uprave.' },
@@ -11,6 +12,8 @@ const SLIDES = [
 ];
 
 export default function Intro({ onDone }) {
+  const styles = useStyles();
+  const c = useTheme();
   const [i, setI] = useState(0);
   const slide = SLIDES[i];
   const last = i === SLIDES.length - 1;
@@ -37,20 +40,20 @@ export default function Intro({ onDone }) {
   );
 }
 
-const styles = StyleSheet.create({
-  fill: { flex: 1, backgroundColor: '#fff', padding: 24 },
+const useStyles = makeStyles(c => ({
+  fill: { flex: 1, backgroundColor: c.surface, padding: 24 },
   skip: { alignSelf: 'flex-end' },
-  skipText: { color: '#1565c0', fontWeight: '600' },
+  skipText: { color: c.accent, fontWeight: '600' },
   body: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
   icon: { fontSize: 72 },
-  title: { fontSize: 24, fontWeight: '700', textAlign: 'center' },
-  text: { fontSize: 16, color: '#555', textAlign: 'center', lineHeight: 23 },
+  title: { fontSize: 24, fontWeight: '700', textAlign: 'center', color: c.text },
+  text: { fontSize: 16, color: c.textDim, textAlign: 'center', lineHeight: 23 },
   dots: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 24 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#d5dbe3' },
-  dotOn: { width: 22, backgroundColor: '#1565c0' },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.border },
+  dotOn: { width: 22, backgroundColor: c.accent },
   buttons: { flexDirection: 'row', gap: 12 },
-  primary: { flex: 1, padding: 15, borderRadius: 12, backgroundColor: '#1565c0', alignItems: 'center' },
+  primary: { flex: 1, padding: 15, borderRadius: 12, backgroundColor: c.button, alignItems: 'center' },
   primaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  secondary: { flex: 1, padding: 15, borderRadius: 12, backgroundColor: '#eef3fb', alignItems: 'center' },
-  secondaryText: { color: '#1565c0', fontWeight: '700', fontSize: 16 },
-});
+  secondary: { flex: 1, padding: 15, borderRadius: 12, backgroundColor: c.accentSoft, alignItems: 'center' },
+  secondaryText: { color: c.accent, fontWeight: '700', fontSize: 16 },
+}));

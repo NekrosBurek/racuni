@@ -36,3 +36,10 @@ Folder i format imena upisani su u skrivena polja samog foldera na Drive-u. Na t
 Svaki push na `main` pokreće GitHub Actions. Build pusti testove, napravi APK potpisan ključem iz repo secrets (`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`) i objavi release `v1.0.<broj builda>`.
 
 Test parsera: `node receipt.test.mjs`
+
+## Deljenje sa ukućanima
+1. Na Google Drive-u podeli folder sa računima (Share → mejl ukućana → Editor).
+2. U Google Cloud konzoli dodaj njihov Gmail pod **Audience → Test users**. Bez toga Google ne pušta prijavu dok je aplikacija u Testing režimu.
+3. Oni instaliraju APK, prijave se svojim nalogom i u podešavanjima izaberu folder označen sa 👥.
+
+Svi tada čuvaju u isti folder i vide iste račune, garancije, rate i budžet. Isti račun se ne može sačuvati dvaput, ma ko ga skenirao.
