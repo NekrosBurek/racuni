@@ -22,9 +22,7 @@ export default function RenameExisting({ token, folder, format, onFail }) {
       for (const [i, r] of missing.entries()) {
         setProgress(`Čitam starije račune ${i + 1}/${missing.length}…`);
         try {
-          const pdfTextValue = await pdfText(token, r.id);
-          console.log('[racuni-pdf-text]', r.name, JSON.stringify(pdfTextValue.slice(0, 1200))); // TEMP debug, remove
-          const d = dataFromText(pdfTextValue);
+          const d = dataFromText(await pdfText(token, r.id));
           const shop = (r.shopGuessed && d.shop) || r.shop || d.shop;
           Object.assign(r, {
             shop,
@@ -37,7 +35,7 @@ export default function RenameExisting({ token, folder, format, onFail }) {
           });
           described.set(r.id, receiptDescription(r));
           // The shop read from the PDF is kept as the file's data too (same as "Dopuni"), not only in the name.
-          if (d.shop) await setReceiptData(token, r.id, { shop: d.shop.slice(0, 40), checked: '2' });
+          if (d.shop) await setReceiptData(token, r.id, { shop: d.shop.slice(0, 40), checked: '3' });
         } catch {
           // unreadable (e.g. a photo): keep its current name
         }

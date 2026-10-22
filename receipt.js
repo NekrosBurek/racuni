@@ -66,9 +66,19 @@ export function shopName(journal) {
   const i = lines.findIndex(l => /^(ПИБ|PIB)\s*:/i.test(l));
   const afterPib = i >= 0 && lines[i + 1] ? lines[i + 1].replace(/^[^:]{1,20}:\s*/, '') : '';
   if (afterPib) return afterPib;
-  // Journals that print the tax number alone under the title: "=== ФИСКАЛНИ РАЧУН ===", "112069571", "CRAFTER doo".
-  const t = lines.findIndex(l => /ФИСКАЛНИ РАЧУН|FISKALNI RA[ČC]UN/i.test(l));
-  return t >= 0 && /^\d{9}$/.test(lines[t + 1] ?? '') && lines[t + 2] ? lines[t + 2] : '';
+  return bareHeader(journal)?.company ?? '';
+}
+
+// Journals that print the tax number alone under the title: "=== ФИСКАЛНИ РАЧУН ===", "112069571", "CRAFTER doo",
+// "1405628-mts W …". Drive's text of a saved PDF joins those lines with runs of spaces ("…===  100416234 \r\n
+// TEHNOMANIJA DOO BEOGRAD   1061841-T033"), so the header is split on line breaks and on 2+ spaces alike.
+function bareHeader(journal) {
+  const text = decode(journal.replace(/<[^>]*>/g, '\n'));
+  const m = text.match(/(?:ФИСКАЛНИ РАЧУН|FISKALNI RA[ČC]UN)([\s\S]*?)(?:Касир|Kasir|ЕСИР|ESIR|$)/i);
+  if (!m) return null;
+  const parts = m[1].split(/\r?\n|\s{2,}/).map(s => s.replace(/^=+|=+$/g, '').trim()).filter(Boolean);
+  if (!/^\d{9}$/.test(parts[0] ?? '') || !parts[1]) return null;
+  return { company: parts[1], place: (parts[2] ?? '').replace(/^\d+-\s*/, '') };
 }
 
 // "Место продаје: …", else the line under the company in a journal that prints the tax number alone
@@ -77,8 +87,7 @@ export function placeName(journal) {
   const lines = journalLines(journal);
   const labeled = headerValue(lines, /^(Место продаје|Mesto prodaje)\s*:?/i);
   if (labeled) return labeled;
-  const t = lines.findIndex(l => /ФИСКАЛНИ РАЧУН|FISKALNI RA[ČC]UN/i.test(l));
-  return t >= 0 && /^\d{9}$/.test(lines[t + 1] ?? '') && lines[t + 3] ? lines[t + 3].replace(/^\d+-\s*/, '') : '';
+  return bareHeader(journal)?.place ?? '';
 }
 
 // The verification page prints "Предузеће: …" and "Место продаје: …" above the receipt itself; that header is
@@ -98,7 +107,7 @@ const ITEM_NUMBERS = /^(.*?)\s*(-?[\d.]+,\d{2})\s+(-?[\d.,]+)\s+(-?[\d.]+,\d{2})
 export function journalItems(journal) {
   const lines = journalLines(journal);
   const start = lines.findIndex(l => /^(Назив|Naziv)(\s|$)/i.test(l));
-  if (start < 0) return [];
+  if (start < 0) return flatItems(journal);
   const items = [];
   let name = '';
   for (const line of lines.slice(start + 1)) {
@@ -113,6 +122,19 @@ export function journalItems(journal) {
 }
 
 // The verification page loads the exact item list from /specifications with a token embedded in its script.
+// Items from text whose lines were merged (Drive's text of a saved PDF): the block between the column header and
+// the dashed line, read as consecutive "name price qty total" runs.
+function flatItems(journal) {
+  const flat = decode(journal.replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ');
+  const block = flat.match(/(?:Назив|Naziv) (?:Цена|Cena) (?:Кол|Kol)\.? (?:Укупно|Ukupno) (.*?) -{5,}/i)?.[1];
+  if (!block) return [];
+  const items = [];
+  for (const m of block.matchAll(/\s*(.+?) (-?[\d.]+,\d{2}) (-?[\d.,]+) (-?[\d.]+,\d{2})(?= |$)/g)) {
+    items.push({ name: m[1].trim(), quantity: amount(m[3]), total: amount(m[4]) });
+  }
+  return items;
+}
+
 export function specificationRequest(html) {
   const token = html.match(/viewModel\.Token\('([^']+)'\)/)?.[1];
   const invoiceNumber = html.match(/viewModel\.InvoiceNumber\('([^']+)'\)/)?.[1];

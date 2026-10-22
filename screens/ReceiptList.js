@@ -60,7 +60,7 @@ export function useReceipts(token, settings, onFail) {
 // Reads one old receipt's PDF text through Drive and stores what it finds as the file's data.
 async function fillIn(token, r) {
   const f = dataFromText(await pdfText(token, r.id));
-  const data = { checked: '2' }; // tried once; files without readable text don't come back to the list
+  const data = { checked: '3' }; // tried once; files without readable text don't come back to the list
   if (f.total !== null) data.total = String(f.total);
   if (f.date) data.date = f.date.toISOString();
   if (f.invoiceNumber) data.invoiceNumber = f.invoiceNumber;

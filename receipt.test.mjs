@@ -438,7 +438,7 @@ console.log('shops ok');
   assert.equal(legacyFields('Предузеће: CRAFTER doo\n').shop, 'CRAFTER doo');
   const { receiptInfo } = await import('./stats.js');
   assert.equal(receiptInfo({ id: 'a', name: 'x.pdf', appProperties: { checked: '1' } }).checked, false); // read again
-  assert.equal(receiptInfo({ id: 'a', name: 'x.pdf', appProperties: { checked: '2' } }).checked, true);
+  assert.equal(receiptInfo({ id: 'a', name: 'x.pdf', appProperties: { checked: '3' } }).checked, true);
   console.log('legacy shop ok');
 }
 {
@@ -477,4 +477,28 @@ console.log('shops ok');
   assert.equal(w.nextRate.amount, 1916.61);
   assert.equal(w.nextRate.due.slice(0, 7), '2026-11');
   console.log('search/widget ok');
+}
+{
+  // Drive's text of a saved PDF: the journal's lines joined by runs of spaces (shape copied from a real export).
+  const { dataFromText, renamePlan } = await import('./rename.js');
+  const merged = '\uFEFF============ ФИСКАЛНИ РАЧУН ============  100416234  \r\n TEHNOMANIJA DOO BEOGRAD   1061841-T033  \r\n ВОЈИСЛАВА ИЛИЋА 1  \r\n Београд  \r\n'
+    + 'Касир: X ЕСИР број: 639/1.0 -------------ПРОМЕТ ПРОДАЈА------------- Артикли \r\n======================================== '
+    + 'Назив Цена Кол. Укупно BBM1345 Mini pekare VOX (Ђ)  \r\n 9.158,00 1 9.158,00 3917063402 POSTELJINA (Ђ)  \r\n 932,88 2 1.865,76 '
+    + '---------------------------------------- Укупан износ: 11.023,76 Платна картица: 11.023,76 ==== ПФР време: 19.10.2022. 21:10:15 '
+    + 'ПФР број рачуна: ZHU4F4NM-R7WS5MO0-1961 Бројач рачуна: 1695/1961ПП';
+  const d = dataFromText(merged);
+  assert.equal(d.shop, 'TEHNOMANIJA DOO BEOGRAD');
+  assert.equal(d.place, 'T033');
+  assert.deepEqual(d.items.map(i => [i.name, i.quantity, i.total]), [['BBM1345 Mini pekare VOX (Ђ)', 1, 9158], ['3917063402 POSTELJINA (Ђ)', 2, 1865.76]]);
+  assert.equal(d.invoiceNumber, 'ZHU4F4NM-R7WS5MO0-1961');
+  const lesnina = dataFromText('============ ФИСКАЛНИ РАЧУН ============  103132663  \r\n LESNINA S  \r\n 1312978-Maloprodaja MOMAX B3   Преконошка 36  \r\n Београд  Касир: 3MCV');
+  assert.deepEqual([lesnina.shop, lesnina.place], ['LESNINA S', 'Maloprodaja MOMAX B3']);
+
+  // Renaming never makes a name poorer: no shop, a guessed shop or no items -> left alone.
+  const base = { id: 'a', name: '2022-10-19_Vox_Mini_Pekare', date: new Date(2022, 9, 19, 12), total: 9158 };
+  assert.equal(renamePlan([{ ...base, shop: 'TEHNOMANIJA DOO', items: [] }], '{datum}_{radnja}_{stavke}').length, 0);
+  assert.equal(renamePlan([{ ...base, shop: 'Vox', shopGuessed: true, items: [{ name: 'VOX Mini pekare', total: 9158 }] }], '{datum}_{radnja}_{stavke}').length, 0);
+  const plan = renamePlan([{ ...base, shop: 'TEHNOMANIJA DOO BEOGRAD', items: [{ name: 'BBM1345 Mini pekare VOX (Ђ)', total: 9158 }] }], '{datum}_{radnja}_{stavke}');
+  assert.equal(plan[0].to, '2022-10-19_Tehnomanija_Vox_Mini_Pekare.pdf');
+  console.log('drive text ok');
 }
