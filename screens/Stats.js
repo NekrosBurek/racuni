@@ -1,12 +1,15 @@
 // Spending overview from the receipts' data: this month vs last, the last six months, top shops, CSV export.
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, Text, View } from 'react-native';
+import { makeStyles, useTheme } from '../theme';
 import { spendingStats, toCsv } from '../stats';
 import { uploadText } from '../drive';
 
 const money = n => n.toLocaleString('sr-RS', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function Stats({ token, settings, data, onFail }) {
+  const styles = useStyles();
+  const c = useTheme();
   const { receipts, reload } = data;
   const [exporting, setExporting] = useState(false);
   useEffect(() => { reload(); }, [reload]);
@@ -28,7 +31,7 @@ export default function Stats({ token, settings, data, onFail }) {
     }
   }
 
-  if (!s) return <View style={styles.center}><ActivityIndicator size="large" /></View>;
+  if (!s) return <View style={styles.center}><ActivityIndicator size="large" color={c.accent} /></View>;
   const max = Math.max(1, ...s.months.map(m => m.total));
   const change = s.lastMonth.total ? Math.round(((s.thisMonth.total - s.lastMonth.total) / s.lastMonth.total) * 100) : null;
 
@@ -87,26 +90,26 @@ export default function Stats({ token, settings, data, onFail }) {
   );
 }
 
-const styles = StyleSheet.create({
-  fill: { flex: 1, backgroundColor: '#f6f7f9' },
+const useStyles = makeStyles(c => ({
+  fill: { flex: 1, backgroundColor: c.bg },
   content: { padding: 16, gap: 12, paddingBottom: 40 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.bg },
   cards: { flexDirection: 'row', gap: 12 },
-  card: { flex: 1, padding: 14, borderRadius: 14, backgroundColor: '#fff', gap: 2, elevation: 1 },
-  cardLabel: { color: '#666', fontSize: 13 },
-  cardValue: { fontSize: 22, fontWeight: '700' },
-  cardSub: { color: '#888', fontSize: 12 },
-  h2: { fontSize: 16, fontWeight: '700', marginTop: 8 },
-  chart: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', height: 170, padding: 12, borderRadius: 14, backgroundColor: '#fff' },
+  card: { flex: 1, padding: 14, borderRadius: 14, backgroundColor: c.surface, gap: 2, elevation: c.dark ? 0 : 1 },
+  cardLabel: { color: c.textDim, fontSize: 13 },
+  cardValue: { fontSize: 22, fontWeight: '700', color: c.text },
+  cardSub: { color: c.textFaint, fontSize: 12 },
+  h2: { fontSize: 16, fontWeight: '700', marginTop: 8, color: c.text },
+  chart: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', height: 170, padding: 12, borderRadius: 14, backgroundColor: c.surface },
   barCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', gap: 4 },
-  bar: { width: 22, borderRadius: 6, backgroundColor: '#1565c0' },
-  barValue: { fontSize: 10, color: '#666' },
-  barLabel: { fontSize: 12, color: '#444' },
-  shopRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 12, backgroundColor: '#fff' },
-  rank: { width: 24, textAlign: 'center', fontWeight: '700', color: '#1565c0' },
-  shopName: { fontWeight: '600' },
-  shopTotal: { fontWeight: '700' },
-  note: { color: '#7a5600', backgroundColor: '#fff6e0', padding: 10, borderRadius: 10 },
-  export: { marginTop: 8, padding: 14, borderRadius: 12, backgroundColor: '#1565c0', alignItems: 'center' },
+  bar: { width: 22, borderRadius: 6, backgroundColor: c.accent },
+  barValue: { fontSize: 10, color: c.textDim },
+  barLabel: { fontSize: 12, color: c.textDim },
+  shopRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 12, backgroundColor: c.surface },
+  rank: { width: 24, textAlign: 'center', fontWeight: '700', color: c.accent },
+  shopName: { fontWeight: '600', color: c.text },
+  shopTotal: { fontWeight: '700', color: c.text },
+  note: { color: c.warnText, backgroundColor: c.warnBg, padding: 10, borderRadius: 10 },
+  export: { marginTop: 8, padding: 14, borderRadius: 12, backgroundColor: c.button, alignItems: 'center' },
   exportText: { color: '#fff', fontWeight: '700' },
-});
+}));

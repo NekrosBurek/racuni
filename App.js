@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, AppState, BackHandler, Button, FlatList, Linking, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, Vibration, View,
+  ActivityIndicator, Alert, AppState, BackHandler, Button, FlatList, Linking, Platform, Pressable, ScrollView, StatusBar, Text, TextInput, Vibration, View,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -22,6 +22,7 @@ import Stats from './screens/Stats';
 import Intro from './screens/Intro';
 import RenameExisting from './screens/Rename';
 import { introDone, setIntroDone } from './prefs';
+import { makeStyles, useTheme } from './theme';
 
 const TABS = [['scan', '📷', 'Skeniraj'], ['list', '🧾', 'Računi'], ['stats', '📊', 'Pregled'], ['settings', '⚙️', 'Podešavanja']];
 
@@ -135,6 +136,8 @@ async function saveReceipt(token, settings, r) {
 }
 
 export default function App() {
+  const styles = useStyles();
+  const c = useTheme();
   // The access token lives in memory; auth.js keeps the refresh token so the sign-in survives restarts.
   // Folder and name format are read back from Drive.
   const [session, setSession] = useState(null); // { accessToken, expiresAt }
@@ -268,13 +271,15 @@ export default function App() {
           <Text style={styles.errorText}>{error} (dodirni da zatvoriš)</Text>
         </Pressable>
       )}
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle={c.dark ? 'light-content' : 'dark-content'} backgroundColor={c.surface} />
     </SafeAreaView>
     </SafeAreaProvider>
   );
 }
 
 function Main({ token, settings, tab, setTab, onFail, onSettings, onLogout, onShowIntro }) {
+  const styles = useStyles();
+  const c = useTheme();
   const receipts = useReceipts(token, settings, onFail);
   return (
     <View style={{ flex: 1 }}>
@@ -308,6 +313,8 @@ function Main({ token, settings, tab, setTab, onFail, onSettings, onLogout, onSh
 }
 
 function Onboarding({ token, current, onFail, onDone, onCancel, onLogout, onShowIntro }) {
+  const styles = useStyles();
+  const c = useTheme();
   const [folders, setFolders] = useState(null);
   const [folder, setFolder] = useState(current?.folder ?? null);
   const [newFolderName, setNewFolderName] = useState('');
@@ -333,7 +340,7 @@ function Onboarding({ token, current, onFail, onDone, onCancel, onLogout, onShow
   }
 
   return (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
+    <ScrollView style={styles.pageBg} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
       {current ? <Text style={styles.pageTitle}>Podešavanja</Text> : <Text style={styles.pageTitle}>Još jedan korak</Text>}
       <Text style={styles.h2}>Folder na Google Drive-u</Text>
       <Text style={styles.hint}>Ovde se čuvaju skenirani računi i odavde se prikazuju.</Text>
@@ -346,7 +353,7 @@ function Onboarding({ token, current, onFail, onDone, onCancel, onLogout, onShow
                 key={item.id}
                 style={[styles.folderRow, folder?.id === item.id && styles.folderOn]}
                 onPress={() => { setFolder(item); setNewFolderName(''); }}>
-                <Text>📁 {item.name}</Text>
+                <Text style={styles.folderText}>📁 {item.name}</Text>
               </Pressable>
             ))}
           </ScrollView>
@@ -355,12 +362,13 @@ function Onboarding({ token, current, onFail, onDone, onCancel, onLogout, onShow
       <TextInput
         style={styles.input}
         placeholder="…ili ime novog foldera"
+        placeholderTextColor={c.textFaint}
         value={newFolderName}
         onChangeText={t => { setNewFolderName(t); if (t) setFolder(null); }}
       />
 
       <Text style={styles.h2}>Format imena fajla</Text>
-      <TextInput style={styles.input} value={nameFormat} onChangeText={setNameFormat} autoCapitalize="none" />
+      <TextInput style={styles.input} value={nameFormat} onChangeText={setNameFormat} autoCapitalize="none" placeholderTextColor={c.textFaint} />
       <Text style={styles.hint}>Polja: {FORMAT_TOKENS}</Text>
       <Text style={styles.hint}>Primer: {example}</Text>
       {nameFormat !== DEFAULT_FORMAT && (
@@ -373,7 +381,7 @@ function Onboarding({ token, current, onFail, onDone, onCancel, onLogout, onShow
       {onCancel && <Button title="Odustani" color="#888" onPress={onCancel} />}
       {current && <RenameExisting token={token} folder={current.folder} format={nameFormat} onFail={onFail} />}
       {onShowIntro && <Button title="Prikaži uvod ponovo" color="#888" onPress={onShowIntro} />}
-      <Button title="Odjavi se" color="#c62828" onPress={onLogout} />
+      <Button title="Odjavi se" color={c.danger} onPress={onLogout} />
       <Text style={[styles.hint, { textAlign: 'center', marginTop: 8 }]}>Verzija {VERSION}</Text>
     </ScrollView>
   );
@@ -399,6 +407,8 @@ async function savePaperReceipt(token, settings, p) {
 const KIND_ICON = { wait: '⏳', ok: '✅', dup: '⚠️', err: '❌' };
 
 function Scanner({ token, settings, onFail, active }) {
+  const styles = useStyles();
+  const c = useTheme();
   const [permission, requestPermission] = useCameraPermissions();
   const [items, setItems] = useState([]); // newest first: { id, kind, title, text, receipt }
   const seen = useRef(new Set());
@@ -515,42 +525,44 @@ function Scanner({ token, settings, onFail, active }) {
 }
 
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#fff' },
-  center: { flex: 1, justifyContent: 'center', padding: 24, gap: 12 },
+const useStyles = makeStyles(c => ({
+  root: { flex: 1, backgroundColor: c.surface },
+  center: { flex: 1, justifyContent: 'center', padding: 24, gap: 12, backgroundColor: c.surface },
   page: { padding: 20, gap: 10, paddingBottom: 40 },
-  title: { fontSize: 32, fontWeight: '700', textAlign: 'center', marginBottom: 8 },
-  h2: { fontSize: 17, fontWeight: '600', marginTop: 8 },
-  label: { fontSize: 16, textAlign: 'center' },
-  hint: { color: '#666' },
-  input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, fontSize: 16 },
-  folderBox: { maxHeight: 220, borderWidth: 1, borderColor: '#eee', borderRadius: 8 },
-  folderRow: { padding: 12, borderBottomWidth: 1, borderBottomColor: '#f2f2f2' },
-  folderOn: { backgroundColor: '#e3f0ff' },
-  tabBar: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: '#e6e8eb', backgroundColor: '#fff', paddingBottom: 4 },
+  pageBg: { flex: 1, backgroundColor: c.surface },
+  title: { fontSize: 32, fontWeight: '700', textAlign: 'center', marginBottom: 8, color: c.text },
+  h2: { fontSize: 17, fontWeight: '600', marginTop: 8, color: c.text },
+  label: { fontSize: 16, textAlign: 'center', color: c.text },
+  hint: { color: c.textDim },
+  input: { borderWidth: 1, borderColor: c.border, borderRadius: 8, padding: 12, fontSize: 16, color: c.text, backgroundColor: c.surfaceAlt },
+  folderBox: { maxHeight: 220, borderWidth: 1, borderColor: c.border, borderRadius: 8 },
+  folderRow: { padding: 12, borderBottomWidth: 1, borderBottomColor: c.borderSoft },
+  folderText: { color: c.text },
+  folderOn: { backgroundColor: c.selected },
+  tabBar: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface, paddingBottom: 4 },
   tabItem: { flex: 1, alignItems: 'center', paddingVertical: 8, gap: 2 },
   tabIcon: { fontSize: 20 },
   tabDim: { opacity: 0.45 },
-  tabLabel: { fontSize: 11, color: '#888' },
-  tabLabelOn: { color: '#1565c0', fontWeight: '700' },
+  tabLabel: { fontSize: 11, color: c.textFaint },
+  tabLabelOn: { color: c.accent, fontWeight: '700' },
   logo: { fontSize: 64, textAlign: 'center' },
-  pageTitle: { fontSize: 24, fontWeight: '700' },
-  primary: { padding: 15, borderRadius: 12, backgroundColor: '#1565c0', alignItems: 'center', marginTop: 8 },
+  pageTitle: { fontSize: 24, fontWeight: '700', color: c.text },
+  primary: { padding: 15, borderRadius: 12, backgroundColor: c.button, alignItems: 'center', marginTop: 8 },
   primaryText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   disabled: { opacity: 0.4 },
-  sheet: { height: '40%', borderTopLeftRadius: 16, borderTopRightRadius: 16, marginTop: -16, backgroundColor: '#fff' },
-  summary: { padding: 14, fontSize: 16, fontWeight: '600', textAlign: 'center' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#f2f2f2' },
+  sheet: { height: '40%', borderTopLeftRadius: 16, borderTopRightRadius: 16, marginTop: -16, backgroundColor: c.surface },
+  summary: { padding: 14, fontSize: 16, fontWeight: '600', textAlign: 'center', color: c.text },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.borderSoft },
   rowIcon: { fontSize: 20 },
-  rowTitle: { fontSize: 15, fontWeight: '600' },
-  amount: { fontSize: 15, fontWeight: '600' },
-  wait: { color: '#666' },
-  ok: { color: '#1a7f37' },
-  dup: { color: '#b35900' },
-  err: { color: '#c62828' },
+  rowTitle: { fontSize: 15, fontWeight: '600', color: c.text },
+  amount: { fontSize: 15, fontWeight: '600', color: c.text },
+  wait: { color: c.textDim },
+  ok: { color: c.ok },
+  dup: { color: c.warn },
+  err: { color: c.danger },
   errorBar: { position: 'absolute', left: 12, right: 12, bottom: 24, padding: 14, borderRadius: 10, backgroundColor: '#c62828' },
   errorText: { color: '#fff' },
   scanPaper: { position: 'absolute', top: 12, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#000a', borderRadius: 20, paddingVertical: 8, paddingHorizontal: 16 },
   scanPaperText: { color: '#fff', fontWeight: '600' },
-  updateBar: { position: 'absolute', left: 12, right: 12, bottom: 24, padding: 14, borderRadius: 10, backgroundColor: '#1565c0', flexDirection: 'row', alignItems: 'center', gap: 10 },
-});
+  updateBar: { position: 'absolute', left: 12, right: 12, bottom: 24, padding: 14, borderRadius: 10, backgroundColor: c.button, flexDirection: 'row', alignItems: 'center', gap: 10 },
+}));

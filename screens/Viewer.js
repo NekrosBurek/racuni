@@ -1,6 +1,7 @@
 // Shows a receipt PDF inside the app (pdf.js in a WebView) instead of sending the user to Google Drive.
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, BackHandler, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, BackHandler, Linking, Pressable, Text, View } from 'react-native';
+import { makeStyles, useTheme } from '../theme';
 import { WebView } from 'react-native-webview';
 import { File, Paths } from 'expo-file-system';
 import { mediaUrl } from '../drive';
@@ -8,10 +9,10 @@ import { mediaUrl } from '../drive';
 const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174';
 
 // Every page drawn to a canvas at the screen's pixel density; pinch to zoom.
-const page = base64 => `<!doctype html><html><head>
+const page = (base64, bg) => `<!doctype html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
 <script src="${PDFJS}/pdf.min.js"></script>
-<style>body{margin:0;background:#e9e9e9}canvas{display:block;width:100%;margin:0 0 8px;background:#fff}</style>
+<style>body{margin:0;background:${bg}}canvas{display:block;width:100%;margin:0 0 8px;background:#fff}</style>
 </head><body><div id="pages"></div><script>
 pdfjsLib.GlobalWorkerOptions.workerSrc = '${PDFJS}/pdf.worker.min.js';
 var raw = atob('${base64}'), bytes = new Uint8Array(raw.length);
@@ -31,6 +32,8 @@ pdfjsLib.getDocument({ data: bytes }).promise.then(async function (pdf) {
 </script></body></html>`;
 
 export default function Viewer({ token, receipt, onClose, onDelete }) {
+  const styles = useStyles();
+  const c = useTheme();
   const [html, setHtml] = useState(null);
   const [failed, setFailed] = useState(null);
 
@@ -49,7 +52,7 @@ export default function Viewer({ token, receipt, onClose, onDelete }) {
           idempotent: true,
         });
         const base64 = await file.base64();
-        if (alive) setHtml(page(base64));
+        if (alive) setHtml(base64);
       } catch (e) {
         if (alive) setFailed(e.message);
       } finally {
@@ -84,33 +87,34 @@ export default function Viewer({ token, receipt, onClose, onDelete }) {
         <WebView
           style={styles.fill}
           originWhitelist={['*']}
-          source={{ html }}
+          source={{ html: page(html, c.dark ? '#0f1115' : '#e9e9e9') }}
           onMessage={e => { if (e.nativeEvent.data.startsWith('err:')) setFailed(e.nativeEvent.data.slice(4)); }}
         />
       ) : (
-        <View style={styles.center}><ActivityIndicator size="large" /></View>
+        <View style={styles.center}><ActivityIndicator size="large" color={c.accent} /></View>
       )}
       <View style={styles.actions}>
         <Pressable style={styles.action} onPress={() => Linking.openURL(receipt.link)}>
           <Text style={styles.actionText}>Otvori u Drive-u</Text>
         </Pressable>
         <Pressable style={[styles.action, styles.danger]} onPress={confirmDelete}>
-          <Text style={[styles.actionText, { color: '#c62828' }]}>Obriši</Text>
+          <Text style={[styles.actionText, styles.dangerText]}>Obriši</Text>
         </Pressable>
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  fill: { flex: 1, backgroundColor: '#fff' },
+const useStyles = makeStyles(c => ({
+  fill: { flex: 1, backgroundColor: c.surface },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  back: { fontSize: 26, paddingHorizontal: 4 },
-  title: { fontSize: 17, fontWeight: '700' },
-  sub: { color: '#666' },
-  actions: { flexDirection: 'row', gap: 10, padding: 12, borderTopWidth: 1, borderTopColor: '#eee' },
-  action: { flex: 1, padding: 12, borderRadius: 10, backgroundColor: '#eef3fb', alignItems: 'center' },
-  danger: { backgroundColor: '#fdecec' },
-  actionText: { fontWeight: '600', color: '#1565c0' },
-});
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderBottomWidth: 1, borderBottomColor: c.border },
+  back: { fontSize: 26, paddingHorizontal: 4, color: c.text },
+  title: { fontSize: 17, fontWeight: '700', color: c.text },
+  sub: { color: c.textDim },
+  actions: { flexDirection: 'row', gap: 10, padding: 12, borderTopWidth: 1, borderTopColor: c.border },
+  action: { flex: 1, padding: 12, borderRadius: 10, backgroundColor: c.accentSoft, alignItems: 'center' },
+  danger: { backgroundColor: c.dangerSoft },
+  actionText: { fontWeight: '600', color: c.accent },
+  dangerText: { color: c.danger },
+}));

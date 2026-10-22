@@ -54,7 +54,7 @@ export async function findReceipt(token, invoiceNumber) {
 
 export const listReceipts = (token, folderId) =>
   search(token, `'${q(folderId)}' in parents and mimeType='application/pdf' and trashed=false`,
-    'id,name,description,webViewLink,appProperties,createdTime', '&orderBy=createdTime desc&pageSize=1000');
+    'id,name,description,webViewLink,thumbnailLink,appProperties,createdTime', '&orderBy=createdTime desc&pageSize=1000');
 
 export function uploadPdf(token, folderId, name, r, base64) {
   const boundary = 'racuni' + Date.now();

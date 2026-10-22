@@ -9,7 +9,8 @@ module.exports = {
   version: `1.0.${build}`,
   orientation: 'portrait',
   icon: './assets/icon.png',
-  userInterfaceStyle: 'light',
+  // Follows the phone's light/dark setting; theme.js has both palettes.
+  userInterfaceStyle: 'automatic',
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'rs.racuni.app',

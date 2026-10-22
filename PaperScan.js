@@ -1,7 +1,8 @@
 // Receipts without a usable QR code: photograph them in-app, read the PFR data by OCR, let the user check it, then
 // fetch the verified receipt from Poreska uprava's form (the same result a QR scan gives), or keep just the photos.
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Button, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Button, Pressable, ScrollView, Share, Text, TextInput, View } from 'react-native';
+import { makeStyles, useTheme } from './theme';
 import { WebView } from 'react-native-webview';
 import { File } from 'expo-file-system';
 import { ReceiptCamera, recognizeAsync } from './modules/text-scanner';
@@ -42,6 +43,8 @@ function formSummary(report) {
 }
 
 export default function PaperScan({ onClose, onVerified, onSaveImages, onFail }) {
+  const styles = useStyles();
+  const c = useTheme();
   const [stage, setStage] = useState('camera'); // camera | reading | review | verify
   const [photos, setPhotos] = useState([]);
   const [torch, setTorch] = useState(false);
@@ -229,7 +232,7 @@ export default function PaperScan({ onClose, onVerified, onSaveImages, onFail })
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(c => ({
   fill: { flex: 1 },
   hint: { position: 'absolute', top: 12, left: 12, right: 12, color: '#fff', backgroundColor: '#0009', padding: 10, borderRadius: 8, textAlign: 'center' },
   bar: { position: 'absolute', bottom: 24, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-evenly', alignItems: 'center' },
@@ -238,16 +241,16 @@ const styles = StyleSheet.create({
   smallText: { color: '#fff', fontWeight: '600' },
   disabled: { opacity: 0.4 },
   focusRing: { position: 'absolute', width: 60, height: 60, borderRadius: 30, borderWidth: 2, borderColor: '#ffeb3b' },
-  webBar: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8, backgroundColor: '#f2f2f2' },
-  webTitle: { fontWeight: '600', flexShrink: 1 },
-  formBar: { padding: 10, gap: 6, backgroundColor: '#fff6e0', borderTopWidth: 1, borderTopColor: '#f0d58c' },
-  formBarText: { color: '#7a5600' },
-  review: { flex: 1, padding: 16, backgroundColor: '#fff' },
-  title: { fontSize: 18, fontWeight: '700' },
-  label: { color: '#555', fontSize: 13 },
-  input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, fontSize: 16 },
-  inputBad: { borderColor: '#c62828', borderWidth: 2 },
+  webBar: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8, backgroundColor: c.surfaceAlt },
+  webTitle: { fontWeight: '600', flexShrink: 1, color: c.text },
+  formBar: { padding: 10, gap: 6, backgroundColor: c.warnBg, borderTopWidth: 1, borderTopColor: c.warnBorder },
+  formBarText: { color: c.warnText },
+  review: { flex: 1, padding: 16, backgroundColor: c.surface },
+  title: { fontSize: 18, fontWeight: '700', color: c.text },
+  label: { color: c.textDim, fontSize: 13 },
+  input: { borderWidth: 1, borderColor: c.border, borderRadius: 8, padding: 10, fontSize: 16, color: c.text, backgroundColor: c.surfaceAlt },
+  inputBad: { borderColor: c.danger, borderWidth: 2 },
   row: { flexDirection: 'row', gap: 8 },
   half: { flex: 1 },
-  ocr: { fontFamily: 'monospace', fontSize: 11 },
-});
+  ocr: { fontFamily: 'monospace', fontSize: 11, color: c.text },
+}));

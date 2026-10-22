@@ -1,12 +1,15 @@
 // "Preimenuj postojeće račune": rebuilds every receipt's file name with the chosen format. Older files without
 // stored naming data are read once from their PDF (through Drive); the plan is shown before anything is renamed.
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
+import { makeStyles, useTheme } from '../theme';
 import { listReceipts, pdfText, renameReceipt } from '../drive';
 import { receiptInfo, receiptDescription } from '../stats';
 import { dataFromText, renamePlan } from '../rename';
 
 export default function RenameExisting({ token, folder, format, onFail }) {
+  const styles = useStyles();
+  const c = useTheme();
   const [progress, setProgress] = useState(null); // text shown while working
 
   async function start() {
@@ -70,18 +73,18 @@ export default function RenameExisting({ token, folder, format, onFail }) {
       <Text style={styles.title}>Postojeći računi</Text>
       <Text style={styles.hint}>Daje svim računima u folderu ime po formatu iznad, bez ponovnog skeniranja.</Text>
       <Pressable style={[styles.button, progress && styles.busy]} disabled={!!progress} onPress={start}>
-        {progress ? <ActivityIndicator color="#1565c0" /> : null}
+        {progress ? <ActivityIndicator color={c.accent} /> : null}
         <Text style={styles.buttonText}>{progress ?? 'Preimenuj postojeće račune'}</Text>
       </Pressable>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  box: { gap: 6, marginTop: 12, padding: 12, borderRadius: 12, backgroundColor: '#f4f7fb' },
-  title: { fontSize: 16, fontWeight: '700' },
-  hint: { color: '#666' },
-  button: { flexDirection: 'row', justifyContent: 'center', gap: 8, padding: 12, borderRadius: 10, backgroundColor: '#e3edfb' },
+const useStyles = makeStyles(c => ({
+  box: { gap: 6, marginTop: 12, padding: 12, borderRadius: 12, backgroundColor: c.surfaceAlt },
+  title: { fontSize: 16, fontWeight: '700', color: c.text },
+  hint: { color: c.textDim },
+  button: { flexDirection: 'row', justifyContent: 'center', gap: 8, padding: 12, borderRadius: 10, backgroundColor: c.accentSoft },
   busy: { opacity: 0.8 },
-  buttonText: { color: '#1565c0', fontWeight: '700' },
-});
+  buttonText: { color: c.accent, fontWeight: '700' },
+}));

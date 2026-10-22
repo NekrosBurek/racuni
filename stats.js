@@ -41,6 +41,8 @@ export function receiptInfo(file) {
     place: described?.place ?? '',
     items: described?.items ?? null, // null: not stored (older file), [] would mean none
     link: file.webViewLink,
+    // Drive's first-page preview (short-lived link, needs the token); asked for at a size that fills a grid card.
+    thumb: file.thumbnailLink ? file.thumbnailLink.replace(/=s\d+$/, '=s600') : null,
     // Saved by this app: has the data that duplicates and totals rely on.
     complete: !!p.invoiceNumber && total !== null,
     checked: p.checked === '1', // older file already read once by "Dopuni podatke"

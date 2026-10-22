@@ -315,3 +315,15 @@ assert.equal(isNewer('1.0.9', '1.0.9'), false);
 assert.equal(isNewer('1.0.8', '1.0.9'), false);
 assert.equal(isNewer('1.0.1', undefined), true);
 console.log('ok');
+
+// Store icons: known chains map to their website, everything else gets initials.
+const { shopDomain, initials } = await import('./shops.js');
+assert.equal(shopDomain({ shop: 'DELHAIZE SERBIA DOO', place: 'MAXI 123 Beograd' }), 'maxi.rs');
+assert.equal(shopDomain({ shop: 'Telekom Srbija a.d. Beograd,' }), 'mts.rs');
+assert.equal(shopDomain({ shop: 'NIS a.d. Novi Sad' }), 'nis.rs');
+assert.equal(shopDomain({ shop: 'PEKARA ZLATNI KLAS DOO NIŠ' }), null); // the city must not match NIS
+assert.equal(shopDomain({ shop: '' }), null);
+assert.equal(initials('AUTO KRALJEVO'), 'AK');
+assert.equal(initials('Lidl'), 'L');
+assert.equal(initials(''), '?');
+console.log('shops ok');
