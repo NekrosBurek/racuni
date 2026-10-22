@@ -327,3 +327,55 @@ assert.equal(initials('AUTO KRALJEVO'), 'AK');
 assert.equal(initials('Lidl'), 'L');
 assert.equal(initials(''), '?');
 console.log('shops ok');
+
+// Warranty, installments, categories, budget and price history (plans.js).
+{
+  const P = await import('./plans.js');
+  const bought = new Date(2026, 9, 21, 12); // 21 Oct 2026
+  const klima = { total: 45998.6, date: bought, installments: 24, warrantyMonths: 24, shop: 'Telekom Srbija a.d. Beograd,' };
+  let s = P.installments(klima, new Date(2026, 9, 22));
+  assert.deepEqual([s.paid, s.left, s.perMonth], [0, 24, 1916.61]);
+  s = P.installments(klima, new Date(2027, 2, 5)); // Nov..Mar charged
+  assert.deepEqual([s.paid, s.left], [5, 19]);
+  assert.equal(P.installments(klima, new Date(2029, 0, 1)).left, 0);
+  assert.equal(P.installments({ ...klima, installments: 0 }), null);
+  const w = P.warranty(klima, new Date(2028, 8, 1));
+  assert.equal(w.end.toISOString().slice(0, 10), '2028-10-21');
+  assert.ok(w.active && w.daysLeft <= 60);
+  assert.equal(P.warranty(klima, new Date(2029, 0, 1)).active, false);
+
+  assert.equal(P.category({ shop: 'DELHAIZE SERBIA DOO', place: 'MAXI 123' }), 'Hrana');
+  assert.equal(P.category({ shop: 'NIS a.d. Novi Sad' }), 'Gorivo');
+  assert.equal(P.category({ shop: 'APOTEKA ZDRAVLJE DOO' }), 'Apoteka');
+  assert.equal(P.category({ shop: 'NIS a.d. Novi Sad', category: 'Auto' }), 'Auto');
+  assert.equal(P.category({ shop: 'Nešto Nepoznato' }), 'Ostalo');
+  assert.equal(P.category({ shop: 'X', category: 'Izmišljeno' }), 'Ostalo');
+
+  const now = new Date(2026, 9, 25);
+  const list = [
+    { total: 1000, date: new Date(2026, 9, 2), shop: 'LIDL SRBIJA KD' },
+    { total: 500, date: new Date(2026, 9, 3), shop: 'NIS a.d. Novi Sad' },
+    { total: 9999, date: new Date(2026, 8, 3), shop: 'LIDL SRBIJA KD' },
+  ];
+  assert.deepEqual(P.budgetStatus(list, 2000, now), { spent: 1500, budget: 2000, ratio: 0.75, left: 500 });
+  assert.equal(P.budgetStatus(list, 0, now).budget, 0);
+  assert.deepEqual(P.categoryTotals(list, now), [{ name: 'Hrana', total: 1000 }, { name: 'Gorivo', total: 500 }]);
+
+  const withItems = [
+    { date: new Date(2026, 9, 1), shop: 'LIDL', items: [{ name: '4012345 MLEKO 2,8% 1L', total: 278, quantity: 2 }] },
+    { date: new Date(2026, 9, 9), shop: 'MAXI', items: [{ name: 'MLEKO 2,8% 1L (Е)', total: 149 }, { name: 'HLEB', total: 80 }] },
+    { date: new Date(2026, 9, 9), shop: 'MAXI', items: null },
+  ];
+  const h = P.priceHistory(withItems, 'mleko');
+  assert.equal(h.length, 1);
+  assert.deepEqual(h[0].buys.map(b => b.price), [149, 139]);
+  assert.deepEqual([h[0].min, h[0].max], [139, 149]);
+  assert.equal(P.priceHistory(withItems, ' ').length, 0);
+  console.log('plans ok');
+}
+{
+  const { shopDomain } = await import('./shops.js');
+  assert.equal(shopDomain({ shop: 'LIDL SRBIJA KD' }), 'lidl.rs');
+  assert.equal(shopDomain({ shop: 'A1 Srbija d.o.o.' }), 'a1.rs');
+  assert.equal(shopDomain({ shop: 'SRBIJA' }), null);
+}

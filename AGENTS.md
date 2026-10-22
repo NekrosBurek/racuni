@@ -6,6 +6,7 @@ Računi is a React Native Android app: it scans fiscal receipt QR codes and save
 - `receipt.js`: parses the receipt URL and page; tested by `receipt.test.mjs`.
 - `drive.js`: Google Drive REST calls.
 - `theme.js`: light and dark palettes; screens build their styles with `makeStyles(c => ...)` and never hardcode text or background colors.
+- `plans.js`: warranty, installments, categories, budget and price history (pure, tested); UI in `screens/ReceiptDetails.js` and `screens/Plans.js`. Per-receipt values are Drive appProperties `warranty`, `rate`, `category`; the budget is `budget` on the folder.
 - `shops.js` / `screens/ShopIcon.js`: store icons (a chain's website icon, otherwise initials).
 - `version.js`: the app version (CI replaces it with `1.0.<build>`) and the release URL.
 - `app.config.js`: the app name, package, icons, permissions and native plugins.

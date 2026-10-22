@@ -7,7 +7,7 @@ const MONTHS = ['januar', 'februar', 'mart', 'april', 'maj', 'jun', 'jul', 'avgu
 // What the file name is built from, kept in the Drive file's description (appProperties allow only ~120 bytes),
 // so names can be rebuilt later without scanning again.
 export function receiptDescription(r) {
-  const items = (r.items ?? []).slice(0, 60).map(i => ({ n: String(i.name).slice(0, 80), t: i.total }));
+  const items = (r.items ?? []).slice(0, 60).map(i => ({ n: String(i.name).slice(0, 80), t: i.total, ...(i.quantity ? { q: i.quantity } : {}) }));
   return JSON.stringify({ racuni: 1, place: r.place || '', items });
 }
 
@@ -15,7 +15,7 @@ function readDescription(text) {
   try {
     const d = JSON.parse(text);
     if (d?.racuni !== 1) return null;
-    return { place: d.place || '', items: (d.items || []).map(i => ({ name: i.n, total: i.t })) };
+    return { place: d.place || '', items: (d.items || []).map(i => ({ name: i.n, total: i.t, quantity: i.q ?? null })) };
   } catch {
     return null;
   }
@@ -46,6 +46,10 @@ export function receiptInfo(file) {
     // Saved by this app: has the data that duplicates and totals rely on.
     complete: !!p.invoiceNumber && total !== null,
     checked: p.checked === '1', // older file already read once by "Dopuni podatke"
+    // Set by the user in the receipt view (see plans.js).
+    warrantyMonths: Number(p.warranty) || 0,
+    installments: Number(p.rate) || 0,
+    category: p.category || '',
   };
 }
 

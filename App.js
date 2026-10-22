@@ -250,6 +250,7 @@ export default function App() {
         setTab={setTab}
         onFail={fail}
         onSettings={s => { setSettings(s); setTab('scan'); }}
+        onBudget={budget => setSettings(s => ({ ...s, budget }))}
         onLogout={signOut}
         onShowIntro={() => { setIntroDone(false); setIntro(true); }}
       />
@@ -277,7 +278,7 @@ export default function App() {
   );
 }
 
-function Main({ token, settings, tab, setTab, onFail, onSettings, onLogout, onShowIntro }) {
+function Main({ token, settings, tab, setTab, onFail, onSettings, onBudget, onLogout, onShowIntro }) {
   const styles = useStyles();
   const c = useTheme();
   const receipts = useReceipts(token, settings, onFail);
@@ -287,7 +288,7 @@ function Main({ token, settings, tab, setTab, onFail, onSettings, onLogout, onSh
         {/* The scanner stays mounted so its save queue keeps running on other tabs. */}
         <Scanner token={token} settings={settings} onFail={onFail} active={tab === 'scan'} />
         {tab === 'list' && <ReceiptList token={token} data={receipts} onFail={onFail} />}
-        {tab === 'stats' && <Stats token={token} settings={settings} data={receipts} onFail={onFail} />}
+        {tab === 'stats' && <Stats token={token} settings={settings} data={receipts} onFail={onFail} onBudget={onBudget} />}
         {tab === 'settings' && (
           <Onboarding
             token={token}
@@ -343,7 +344,7 @@ function Onboarding({ token, current, onFail, onDone, onCancel, onLogout, onShow
     <ScrollView style={styles.pageBg} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
       {current ? <Text style={styles.pageTitle}>Podešavanja</Text> : <Text style={styles.pageTitle}>Još jedan korak</Text>}
       <Text style={styles.h2}>Folder na Google Drive-u</Text>
-      <Text style={styles.hint}>Ovde se čuvaju skenirani računi i odavde se prikazuju.</Text>
+      <Text style={styles.hint}>Ovde se čuvaju skenirani računi i odavde se prikazuju. 👥 su folderi koje su ti drugi podelili: ako ga izabereš, računi ukućana idu na isto mesto.</Text>
       <View style={styles.folderBox}>
         {folders === null ? <ActivityIndicator /> : (
           <ScrollView nestedScrollEnabled>
@@ -353,7 +354,10 @@ function Onboarding({ token, current, onFail, onDone, onCancel, onLogout, onShow
                 key={item.id}
                 style={[styles.folderRow, folder?.id === item.id && styles.folderOn]}
                 onPress={() => { setFolder(item); setNewFolderName(''); }}>
-                <Text style={styles.folderText}>📁 {item.name}</Text>
+                <Text style={styles.folderText}>{item.ownedByMe === false ? '👥' : '📁'} {item.name}</Text>
+                {item.ownedByMe === false && (
+                  <Text style={styles.hint}>Deli: {item.owners?.[0]?.displayName ?? 'drugi nalog'}</Text>
+                )}
               </Pressable>
             ))}
           </ScrollView>

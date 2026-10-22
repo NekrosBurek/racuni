@@ -5,6 +5,7 @@ import { makeStyles, useTheme } from '../theme';
 import { WebView } from 'react-native-webview';
 import { File, Paths } from 'expo-file-system';
 import { mediaUrl } from '../drive';
+import ReceiptDetails from './ReceiptDetails';
 
 const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174';
 
@@ -31,7 +32,7 @@ pdfjsLib.getDocument({ data: bytes }).promise.then(async function (pdf) {
 }).catch(function (e) { window.ReactNativeWebView.postMessage('err:' + e.message); });
 </script></body></html>`;
 
-export default function Viewer({ token, receipt, onClose, onDelete }) {
+export default function Viewer({ token, receipt, onClose, onDelete, onChange, onFail }) {
   const styles = useStyles();
   const c = useTheme();
   const [html, setHtml] = useState(null);
@@ -93,6 +94,7 @@ export default function Viewer({ token, receipt, onClose, onDelete }) {
       ) : (
         <View style={styles.center}><ActivityIndicator size="large" color={c.accent} /></View>
       )}
+      <ReceiptDetails token={token} receipt={receipt} onChange={onChange} onFail={onFail} />
       <View style={styles.actions}>
         <Pressable style={styles.action} onPress={() => Linking.openURL(receipt.link)}>
           <Text style={styles.actionText}>Otvori u Drive-u</Text>

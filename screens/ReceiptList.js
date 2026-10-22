@@ -8,8 +8,14 @@ import { legacyFields } from '../legacy';
 import Viewer from './Viewer';
 import { ShopIcon } from './ShopIcon';
 import { makeStyles, useTheme } from '../theme';
+import { installments, warranty } from '../plans';
 
 const day = d => (d ? d.toLocaleDateString('sr-RS') : '');
+// Small markers in the list for receipts with a running warranty or unpaid installments.
+const badges = r => {
+  const rate = installments(r);
+  return [warranty(r)?.active && '🛡️', rate?.left && `💳 ${rate.paid}/${rate.count}`].filter(Boolean).join(' ');
+};
 const money = n => n.toLocaleString('sr-RS', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // Shared by the list and the overview, so both show the same data after a delete or a fill-in.
@@ -109,6 +115,8 @@ export default function ReceiptList({ token, data, onFail }) {
         receipt={open}
         onClose={() => setOpen(null)}
         onDelete={r => { setOpen(null); remove(r); }}
+        onChange={r => { replace(r); setOpen(r); }}
+        onFail={onFail}
       />
     );
   }
@@ -184,7 +192,7 @@ export default function ReceiptList({ token, data, onFail }) {
               <ShopIcon receipt={item} dark={c.dark} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.rowTitle} numberOfLines={1}>{item.shop || item.name}</Text>
-                <Text style={styles.rowSub} numberOfLines={1}>{[day(item.date), item.name].filter(Boolean).join(' · ')}</Text>
+                <Text style={styles.rowSub} numberOfLines={1}>{[day(item.date), badges(item), item.name].filter(Boolean).join(' · ')}</Text>
               </View>
               <Text style={[styles.amount, item.total === null && styles.amountMissing]}>
                 {item.total !== null ? money(item.total) : '—'}

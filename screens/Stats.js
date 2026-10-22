@@ -1,17 +1,21 @@
-// Spending overview from the receipts' data: this month vs last, the last six months, top shops, CSV export.
+// Spending overview from the receipts' data: this month vs last, budget, categories, installments, warranties,
+// item prices, the last six months, top shops, CSV export.
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import { makeStyles, useTheme } from '../theme';
 import { spendingStats, toCsv } from '../stats';
 import { uploadText } from '../drive';
+import Plans from './Plans';
+import Viewer from './Viewer';
 
 const money = n => n.toLocaleString('sr-RS', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export default function Stats({ token, settings, data, onFail }) {
+export default function Stats({ token, settings, data, onFail, onBudget }) {
   const styles = useStyles();
   const c = useTheme();
-  const { receipts, reload } = data;
+  const { receipts, reload, remove, replace } = data;
   const [exporting, setExporting] = useState(false);
+  const [open, setOpen] = useState(null);
   useEffect(() => { reload(); }, [reload]);
   const s = useMemo(() => receipts && spendingStats(receipts), [receipts]);
 
@@ -29,6 +33,19 @@ export default function Stats({ token, settings, data, onFail }) {
     } finally {
       setExporting(false);
     }
+  }
+
+  if (open) {
+    return (
+      <Viewer
+        token={token}
+        receipt={open}
+        onClose={() => setOpen(null)}
+        onDelete={r => { setOpen(null); remove(r); }}
+        onChange={r => { replace(r); setOpen(r); }}
+        onFail={onFail}
+      />
+    );
   }
 
   if (!s) return <View style={styles.center}><ActivityIndicator size="large" color={c.accent} /></View>;
@@ -55,6 +72,8 @@ export default function Stats({ token, settings, data, onFail }) {
         <Text style={styles.cardLabel}>Prosečan račun</Text>
         <Text style={styles.cardValue}>{money(s.average)} RSD</Text>
       </View>
+
+      <Plans token={token} settings={settings} receipts={receipts} onBudget={onBudget} onOpen={setOpen} onFail={onFail} />
 
       <Text style={styles.h2}>Poslednjih 6 meseci</Text>
       <View style={styles.chart}>

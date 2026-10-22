@@ -24,11 +24,13 @@ const patch = (token, id, body) => call(token, `${API}/${id}?fields=id,name,appP
 export async function findSettings(token) {
   const [f] = await search(token, `appProperties has { key='racuni' and value='folder' } and trashed=false`,
     'id,name,appProperties');
-  return f ? { folder: { id: f.id, name: f.name }, nameFormat: f.appProperties.nameFormat } : null;
+  return f ? { folder: { id: f.id, name: f.name }, nameFormat: f.appProperties.nameFormat, budget: Number(f.appProperties.budget) || 0 } : null;
 }
 
+// Own top-level folders and folders other people shared with this account (a family's common receipts folder).
 export const listFolders = token =>
-  search(token, `mimeType='${FOLDER}' and trashed=false and 'root' in parents`, 'id,name', '&orderBy=name&pageSize=200');
+  search(token, `mimeType='${FOLDER}' and trashed=false and ('root' in parents or sharedWithMe)`,
+    'id,name,ownedByMe,owners(displayName)', '&orderBy=name&pageSize=300');
 
 export async function saveSettings(token, { folder, newFolderName, nameFormat }, previousFolderId) {
   if (!folder) {
@@ -41,9 +43,13 @@ export async function saveSettings(token, { folder, newFolderName, nameFormat },
   if (previousFolderId && previousFolderId !== folder.id) {
     await patch(token, previousFolderId, { appProperties: { racuni: null, nameFormat: null } });
   }
-  await patch(token, folder.id, { appProperties: { racuni: 'folder', nameFormat } });
-  return { folder: { id: folder.id, name: folder.name }, nameFormat };
+  const saved = await patch(token, folder.id, { appProperties: { racuni: 'folder', nameFormat } });
+  return { folder: { id: folder.id, name: folder.name }, nameFormat, budget: Number(saved.appProperties?.budget) || 0 };
 }
+
+// Monthly budget in RSD, kept on the folder next to the other settings (0 removes it).
+export const saveBudget = (token, folderId, budget) =>
+  patch(token, folderId, { appProperties: { budget: budget ? String(budget) : null } });
 
 // Duplicates are matched on a hidden appProperty, so renaming or moving the file doesn't matter.
 export async function findReceipt(token, invoiceNumber) {
