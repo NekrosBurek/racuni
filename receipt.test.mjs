@@ -502,3 +502,9 @@ console.log('shops ok');
   assert.equal(plan[0].to, '2022-10-19_Tehnomanija_Vox_Mini_Pekare.pdf');
   console.log('drive text ok');
 }
+{
+  const { itemLabel } = await import('./stats.js');
+  assert.equal(itemLabel('BOSCH Inverter klime kom'), 'Bosch inverter klime');
+  assert.equal(itemLabel('Parna stanica, 2400W'), 'Parna stanica');
+  console.log('item labels ok');
+}
