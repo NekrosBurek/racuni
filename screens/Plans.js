@@ -4,9 +4,11 @@ import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
 import { saveBudget } from '../drive';
 import { budgetStatus, categoryTotals, installments, warranty, priceHistory } from '../plans';
+import { itemsSummary } from '../stats';
 import { makeStyles, useTheme } from '../theme';
 
 const money = n => n.toLocaleString('sr-RS', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const month = d => d.toLocaleDateString('sr-RS', { month: 'short', year: 'numeric' });
 const day = d => (d ? d.toLocaleDateString('sr-RS') : '');
 
 export default function Plans({ token, settings, receipts, onBudget, onOpen, onFail }) {
@@ -103,8 +105,8 @@ export default function Plans({ token, settings, receipts, onBudget, onOpen, onF
           {rates.map(({ r, s }) => (
             <Pressable key={r.id} style={styles.item} onPress={() => onOpen(r)}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.itemTitle} numberOfLines={1}>{r.shop || r.name}</Text>
-                <Text style={styles.cardSub}>Plaćeno {s.paid}/{s.count} · poslednja {day(s.lastDue)}</Text>
+                <Text style={styles.itemTitle} numberOfLines={1}>{itemsSummary(r) || r.shop || r.name}</Text>
+                <Text style={styles.cardSub} numberOfLines={1}>{r.shop} · plaćeno {s.paid}/{s.count} · poslednja {month(s.lastDue)}</Text>
                 <View style={styles.track}><View style={[styles.fillBar, { width: `${(s.paid / s.count) * 100}%` }]} /></View>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
@@ -122,7 +124,7 @@ export default function Plans({ token, settings, receipts, onBudget, onOpen, onF
           {warranties.map(({ r, w }) => (
             <Pressable key={r.id} style={styles.item} onPress={() => onOpen(r)}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.itemTitle} numberOfLines={1}>{r.items?.[0]?.name || r.shop || r.name}</Text>
+                <Text style={styles.itemTitle} numberOfLines={1}>{itemsSummary(r) || r.shop || r.name}</Text>
                 <Text style={styles.cardSub} numberOfLines={1}>{r.shop} · kupljeno {day(r.date)}</Text>
               </View>
               <Text style={[styles.cardSub, w.daysLeft <= 60 && styles.warn]}>do {day(w.end)}</Text>

@@ -3,10 +3,13 @@
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { setReceiptData } from '../drive';
-import { category, warranty, installments, CATEGORIES, WARRANTY_CHOICES, INSTALLMENT_CHOICES } from '../plans';
+import {
+  category, warranty, installments, firstInstallmentChoices, monthValue, CATEGORIES, WARRANTY_CHOICES, INSTALLMENT_CHOICES,
+} from '../plans';
 import { makeStyles, useTheme } from '../theme';
 
 const money = n => n.toLocaleString('sr-RS', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const month = d => d.toLocaleDateString('sr-RS', { month: 'short', year: 'numeric' });
 const years = m => (m % 12 ? `${m} mes.` : `${m / 12} god.`);
 
 export default function ReceiptDetails({ token, receipt, onChange, onFail }) {
@@ -51,9 +54,14 @@ export default function ReceiptDetails({ token, receipt, onChange, onFail }) {
             </Text>
           )}
           {rate && (
-            <Text style={styles.line}>
-              💳 {rate.left ? `Rate: plaćeno ${rate.paid}/${rate.count}, ostalo ${rate.left} × ${money(rate.perMonth)} = ${money(rate.remaining)} RSD` : `Otplaćeno (${rate.count} rata)`}
-            </Text>
+            <>
+              <Text style={styles.line}>
+                💳 {rate.left ? `Rate: plaćeno ${rate.paid}/${rate.count}, ostalo ${rate.left} × ${money(rate.perMonth)} = ${money(rate.remaining)} RSD` : `Otplaćeno (${rate.count} rata)`}
+              </Text>
+              <Text style={styles.subLine}>
+                Prva {month(rate.firstDue)}{rate.nextDue ? ` · sledeća ${month(rate.nextDue)}` : ''} · poslednja {month(rate.lastDue)}
+              </Text>
+            </>
           )}
         </View>
         {saving ? <ActivityIndicator color={c.accent} /> : <Text style={styles.edit}>{editing ? 'Gotovo' : 'Uredi'}</Text>}
@@ -68,8 +76,12 @@ export default function ReceiptDetails({ token, receipt, onChange, onFail }) {
           <Text style={styles.label}>Plaćeno na rate</Text>
           {chips(INSTALLMENT_CHOICES, receipt.installments, n => (n ? `${n} rata` : 'Ne'),
             n => save('rate', n ? String(n) : null, { installments: n }))}
-          {receipt.installments > 0 && (
-            <Text style={styles.hint}>Računa se da prva rata ide mesec posle kupovine.</Text>
+          {rate && (
+            <>
+              <Text style={styles.label}>Prva rata</Text>
+              {chips(firstInstallmentChoices(receipt).map(monthValue), monthValue(rate.firstDue),
+                v => month(new Date(`${v}-01T12:00:00`)), v => save('rateStart', v, { rateStart: v }))}
+            </>
           )}
         </View>
       )}
@@ -81,6 +93,7 @@ const useStyles = makeStyles(c => ({
   box: { borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.surface },
   summary: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 10 },
   line: { color: c.text, fontSize: 14 },
+  subLine: { color: c.textDim, fontSize: 12, marginLeft: 22 },
   dim: { color: c.textFaint },
   warn: { color: c.warn, fontWeight: '600' },
   edit: { color: c.accent, fontWeight: '700' },

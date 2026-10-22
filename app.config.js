@@ -34,6 +34,8 @@ module.exports = {
     'expo-web-browser',
     // Keeps the stored sign-in out of Android backups (it can't be decrypted on another phone anyway).
     'expo-secure-store',
+    'expo-notifications',
+    'expo-background-task',
     ['expo-camera', { cameraPermission: 'Kamera služi za skeniranje QR koda na računu.' }],
   ],
 };
