@@ -441,3 +441,17 @@ console.log('shops ok');
   assert.equal(receiptInfo({ id: 'a', name: 'x.pdf', appProperties: { checked: '2' } }).checked, true);
   console.log('legacy shop ok');
 }
+{
+  // The PURS page writes Cyrillic labels as numeric entities; journals may print the tax number without "ПИБ:".
+  const { receiptHeader } = await import('./receipt.js');
+  const page = '<p><strong>&#x41F;&#x440;&#x435;&#x434;&#x443;&#x437;&#x435;&#x45B;&#x435;:</strong>&nbsp;<span>Telekom Srbija a.d. Beograd</span></p>'
+    + '<p><strong>&#x41C;&#x435;&#x441;&#x442;&#x43E; &#x43F;&#x440;&#x43E;&#x434;&#x430;&#x458;&#x435;:</strong>&nbsp;<span>mts W Vrnja&#x10D;ka Banja</span></p>';
+  assert.deepEqual(receiptHeader(page, '<pre>x</pre>'), { shop: 'Telekom Srbija a.d. Beograd', place: 'mts W Vrnjačka Banja' });
+  const { dataFromText } = await import('./rename.js');
+  const journal = '============ ФИСКАЛНИ РАЧУН ============\n               100002887                \n      Telekom Srbija a.d. Beograd       \n'
+    + '      1405628-mts W Vrnjačka Banja      \n           КНЕЗА МИЛОША 13              \nКасир:                                  \n';
+  const d = dataFromText(journal);
+  assert.equal(d.shop, 'Telekom Srbija a.d. Beograd');
+  assert.equal(d.place, 'mts W Vrnjačka Banja');
+  console.log('entities ok');
+}

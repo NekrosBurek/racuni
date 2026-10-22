@@ -36,7 +36,12 @@ export function extractJournal(html) {
   return m[0];
 }
 
-const decode = s => s.replace(/&nbsp;|&#160;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+// The PURS page writes its Cyrillic labels as numeric entities ("&#x41F;&#x440;…" = "Пр…"), so those are decoded too.
+const decode = s => s.replace(/&nbsp;/g, ' ')
+  .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+  .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
+  .replace(/ /g, ' ')
+  .replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 const journalLines = journal => decode(journal.replace(/<[^>]*>/g, '\n')).split('\n').map(l => l.trim()).filter(Boolean);
 
 // "Предузеће: CRAFTER doo" style header lines. A value on the label's own line wins; otherwise the next line, unless
@@ -66,7 +71,15 @@ export function shopName(journal) {
   return t >= 0 && /^\d{9}$/.test(lines[t + 1] ?? '') && lines[t + 2] ? lines[t + 2] : '';
 }
 
-export const placeName = journal => headerValue(journalLines(journal), /^(Место продаје|Mesto prodaje)\s*:?/i);
+// "Место продаје: …", else the line under the company in a journal that prints the tax number alone
+// ("1405628-mts W Vrnjačka Banja" -> "mts W Vrnjačka Banja").
+export function placeName(journal) {
+  const lines = journalLines(journal);
+  const labeled = headerValue(lines, /^(Место продаје|Mesto prodaje)\s*:?/i);
+  if (labeled) return labeled;
+  const t = lines.findIndex(l => /ФИСКАЛНИ РАЧУН|FISKALNI RA[ČC]UN/i.test(l));
+  return t >= 0 && /^\d{9}$/.test(lines[t + 1] ?? '') && lines[t + 3] ? lines[t + 3].replace(/^\d+-\s*/, '') : '';
+}
 
 // The verification page prints "Предузеће: …" and "Место продаје: …" above the receipt itself; that header is
 // tried first, the journal's own header second.

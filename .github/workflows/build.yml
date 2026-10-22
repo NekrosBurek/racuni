@@ -23,6 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # Phones only need the two ARM builds; the emulator on the PC is x86_64. Each extra ABI recompiles all native code.
+      # (Cache keys can't contain commas, so the native cache below names the build kind instead of this list.)
       ABIS: ${{ github.event_name == 'pull_request' && 'x86_64' || 'arm64-v8a,armeabi-v7a' }}
     steps:
       - uses: actions/checkout@v4
@@ -49,7 +50,7 @@ jobs:
       # Restored after npm ci, which would delete the node_modules parts.
       - uses: actions/cache@v4
         with:
-          key: native-${{ runner.os }}-${{ env.ABIS }}-${{ hashFiles('package-lock.json', 'app.config.js', 'assets/**', 'modules/**') }}
+          key: native-${{ runner.os }}-${{ github.event_name == 'pull_request' && 'x86_64' || 'arm' }}-${{ hashFiles('package-lock.json', 'app.config.js', 'assets/**', 'modules/**') }}
           path: |
             android
             node_modules/**/android/build
