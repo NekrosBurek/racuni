@@ -37,6 +37,33 @@ const ITEM_RULES = [
   [/MLEKO|HLEB|JOGURT|\bSIR\b|MESO|PILET|SVINJ|JUNET|JAJA|BRASNO|SECER|ULJE|KAFA|\bCAJ\b|\bSOK\b|VODA|PIVO|VINO|COKOLAD|KEKS|BANAN|JABUK|KROMPIR|\bLUK\b|PARADAJZ|TESTENIN|PIRINAC|SALAM|KOBASIC|PASTET|PAVLAK|MARGARIN|PUTER|NAPOLITANK|CIPS|SLADOLED|PECIV|KIFL|BUREK/, 'Hrana'],
 ];
 
+// A picture for one item in the receipt gallery: a specific one for common things, else its category's.
+const ITEM_ICONS = [
+  [/KLIM|INVERTER/, '❄️'], [/MASIN[AE] ZA (PRANJE|SUSENJE)|VES MASIN/, '🧺'], [/FRIZIDER|ZAMRZIVAC/, '🧊'],
+  [/TELEVIZOR|\bTV\b/, '📺'], [/TELEFON|MOBIL|HONOR|SAMSUNG GALAXY|IPHONE|XIAOMI|REDMI/, '📱'], [/LAPTOP|RACUNAR|MONITOR/, '💻'],
+  [/PLAFONJER|SIJALIC|LAMP|\bLED\b|SVETILJK/, '💡'], [/POSTELJIN|JASTU|CARSAV|POKRIVAC|DUSEK/, '🛏️'],
+  [/GARNITUR|SOFA|KAUC|FOTELJ|STOLIC|STO\b|STOLIC|ORMAR/, '🛋️'], [/UTICNIC|PRIKLJUCNIC|PREKIDAC|KABL|PRODUZNI/, '🔌'],
+  [/PEKAR|TOSTER|MIKSER|KUVAL|BOKAL|LONAC|TIGANJ/, '🍳'], [/PEGL|PARN[AE] STANIC/, '👔'], [/USISIVAC/, '🧹'],
+  [/TERMOSTAT|FILTER|VILJUSK|AKUMULATOR|GUM[AE]\b|SVECIC|KOCION/, '🔧'], [/BENZIN|DIZEL|\bBMB\b|TNG/, '⛽'],
+  [/MLEKO|JOGURT|PAVLAK/, '🥛'], [/HLEB|PECIV|KIFL|BUREK/, '🍞'], [/SIR\b|KACKAVALJ/, '🧀'], [/MESO|PILET|SVINJ|JUNET|KOBASIC|SALAM/, '🥩'],
+  [/JAJA/, '🥚'], [/BANAN|JABUK|VOCE|POMORANDZ/, '🍎'], [/KROMPIR|LUK\b|PARADAJZ|POVRC/, '🥔'], [/VODA|SOK|PIVO|VINO|COLA/, '🥤'],
+  [/KAFA|ESPRESSO|CAPPUCCINO/, '☕'], [/COKOLAD|KEKS|SLATKIS|BOMBON/, '🍫'], [/DETERDZENT|OMEKSIVAC|CISTAC|SREDSTVO ZA/, '🧴'],
+  [/SAMPON|SAPUN|PASTA ZA ZUBE|KREMA|DEZODORANS/, '🧼'], [/TOALET PAPIR|UBRUS|MARAMIC/, '🧻'], [/NOKT|LAK ZA/, '💅'],
+  [/TABLET|KAPSUL|SIRUP|VITAMIN|\bLEK\b/, '💊'], [/MAJIC|DUKS|KOSULJ|JAKN/, '👕'], [/PANTALON|FARMERK/, '👖'], [/PATIK|CIPEL/, '👟'],
+  [/AVANS|УПЛАТА|UPLATA/, '💶'],
+];
+const CATEGORY_ICONS = {
+  Hrana: '🛒', Drogerija: '🧴', Apoteka: '💊', Tehnika: '🔌', Kuća: '🏠', Gorivo: '⛽', Auto: '🚗', Odeća: '👕',
+  Restorani: '🍽️', 'Telefon i internet': '📱',
+};
+
+export function itemIcon(name) {
+  const text = plain(String(name));
+  const specific = ITEM_ICONS.find(([re]) => re.test(text))?.[1];
+  if (specific) return specific;
+  return CATEGORY_ICONS[ITEM_RULES.find(([re]) => re.test(text))?.[1]] ?? '🛍️';
+}
+
 // The category the items cost most in, or null when none of them is recognized.
 function itemsCategory(items) {
   const totals = new Map();
@@ -48,13 +75,14 @@ function itemsCategory(items) {
   return [...totals.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 }
 
-// The category the user picked, else the chain's, else what the items are, else a guess from the shop's name.
+// The category the user picked, else what the items are (a klima bought at mts is Tehnika), else the chain's,
+// else a guess from the shop's name.
 export function category(r) {
   if (r.category && CATEGORIES.includes(r.category)) return r.category;
-  const key = chainKey(r);
-  if (BY_TAG[key]) return BY_TAG[key];
   const fromItems = itemsCategory(r.items);
   if (fromItems) return fromItems;
+  const key = chainKey(r);
+  if (BY_TAG[key]) return BY_TAG[key];
   const words = plain(`${r.shop || ''} ${r.place || ''}`);
   return BY_WORD.find(([re]) => re.test(words))?.[1] ?? 'Ostalo';
 }
@@ -114,6 +142,21 @@ export function warrantyReminders(receipts, label, now = new Date()) {
     }
   }
   return out;
+}
+
+// What the home screen widget shows: this month's spending and budget, and the next installment due.
+export function widgetSummary(receipts, budget, now = new Date()) {
+  const b = budgetStatus(receipts, budget, now);
+  const next = receipts.map(r => ({ r, s: installments(r, now) })).filter(x => x.s?.nextDue)
+    .sort((x, y) => x.s.nextDue - y.s.nextDue)[0];
+  return {
+    month: now.toLocaleDateString('sr-RS', { month: 'long' }),
+    spent: b.spent,
+    budget: b.budget,
+    ratio: b.ratio,
+    count: receipts.filter(r => monthKey(r.date) === monthKey(now)).length,
+    nextRate: next ? { label: next.r.shop || next.r.name, amount: next.s.perMonth, due: next.s.nextDue.toISOString() } : null,
+  };
 }
 
 // This month's spending against the budget (0 = no budget set).

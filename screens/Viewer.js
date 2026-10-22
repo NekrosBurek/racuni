@@ -1,11 +1,13 @@
-// Shows a receipt PDF inside the app (pdf.js in a WebView) instead of sending the user to Google Drive.
-import { useEffect, useState } from 'react';
+// One receipt inside the app: a gallery of what was bought (with the PDF as its first tile), or the PDF itself
+// (pdf.js in a WebView) for receipts without stored items.
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, BackHandler, Linking, Pressable, Text, View } from 'react-native';
 import { makeStyles, useTheme } from '../theme';
 import { WebView } from 'react-native-webview';
 import { File, Paths } from 'expo-file-system';
 import { mediaUrl } from '../drive';
 import ReceiptDetails from './ReceiptDetails';
+import ItemsGallery from './ItemsGallery';
 
 const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174';
 
@@ -37,13 +39,18 @@ export default function Viewer({ token, receipt, onClose, onDelete, onChange, on
   const c = useTheme();
   const [html, setHtml] = useState(null);
   const [failed, setFailed] = useState(null);
+  const hasItems = !!receipt.items?.length;
+  const [showPdf, setShowPdf] = useState(!hasItems);
+  // Back from the PDF returns to the gallery, from the gallery closes the receipt.
+  const back = useCallback(() => (showPdf && hasItems ? setShowPdf(false) : onClose()), [showPdf, hasItems, onClose]);
 
   useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => { onClose(); return true; });
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => { back(); return true; });
     return () => sub.remove();
-  }, [onClose]);
+  }, [back]);
 
   useEffect(() => {
+    if (!showPdf || html) return; // downloaded only when the PDF is opened
     let alive = true;
     (async () => {
       const target = new File(Paths.cache, `racun-${receipt.id}.pdf`);
@@ -61,7 +68,7 @@ export default function Viewer({ token, receipt, onClose, onDelete, onChange, on
       }
     })();
     return () => { alive = false; };
-  }, [token, receipt.id]);
+  }, [token, receipt.id, showPdf, html]);
 
   function confirmDelete() {
     Alert.alert('Obriši račun?', `${receipt.name}\n\nFajl ide u kantu na Google Drive-u, odakle može da se vrati.`, [
@@ -73,16 +80,21 @@ export default function Viewer({ token, receipt, onClose, onDelete, onChange, on
   return (
     <View style={styles.fill}>
       <View style={styles.header}>
-        <Pressable onPress={onClose} hitSlop={12}><Text style={styles.back}>←</Text></Pressable>
+        <Pressable onPress={back} hitSlop={12} accessibilityLabel="Nazad"><Text style={styles.back}>←</Text></Pressable>
         <View style={{ flex: 1 }}>
           <Text style={styles.title} numberOfLines={1}>{receipt.shop || receipt.name}</Text>
           <Text style={styles.sub} numberOfLines={1}>
-            {[receipt.date?.toLocaleDateString('sr-RS'), receipt.total !== null ? `${receipt.total.toFixed(2)} RSD` : null]
+            {[receipt.date?.toLocaleDateString('sr-RS'), receipt.total !== null ? `${receipt.total.toLocaleString('sr-RS', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} RSD` : null,
+              hasItems ? `${receipt.items.length} ${receipt.items.length === 1 ? 'stavka' : 'stavki'}` : null]
               .filter(Boolean).join(' · ')}
           </Text>
         </View>
       </View>
-      {failed ? (
+      {!showPdf ? (
+        <View style={styles.fill}>
+          <ItemsGallery token={token} receipt={receipt} onOpenPdf={() => setShowPdf(true)} />
+        </View>
+      ) : failed ? (
         <View style={styles.center}><Text style={styles.sub}>Račun nije učitan: {failed}</Text></View>
       ) : html ? (
         <WebView

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
 import { makeStyles, useTheme } from '../theme';
-import { listReceipts, pdfText, renameReceipt } from '../drive';
+import { listReceipts, pdfText, renameReceipt, setReceiptData } from '../drive';
 import { receiptInfo, receiptDescription } from '../stats';
 import { dataFromText, renamePlan } from '../rename';
 
@@ -17,20 +17,25 @@ export default function RenameExisting({ token, folder, format, onFail }) {
       setProgress('Učitavam račune…');
       const receipts = (await listReceipts(token, folder.id)).map(receiptInfo);
       const described = new Map(); // id -> description to store with the new name
-      const missing = receipts.filter(r => r.items === null);
+      // No stored items, or a shop only guessed from the old file name: read the PDF once for the real data.
+      const missing = receipts.filter(r => r.items === null || r.shopGuessed);
       for (const [i, r] of missing.entries()) {
         setProgress(`Čitam starije račune ${i + 1}/${missing.length}…`);
         try {
           const d = dataFromText(await pdfText(token, r.id));
+          const shop = (r.shopGuessed && d.shop) || r.shop || d.shop;
           Object.assign(r, {
-            shop: r.shop || d.shop,
-            place: d.place,
-            items: d.items,
+            shop,
+            shopGuessed: r.shopGuessed && !d.shop,
+            place: d.place || r.place,
+            items: d.items.length ? d.items : r.items ?? [],
             date: r.date ?? d.date,
             total: r.total ?? d.total,
             invoiceNumber: r.invoiceNumber ?? d.invoiceNumber,
           });
           described.set(r.id, receiptDescription(r));
+          // The shop read from the PDF is kept as the file's data too (same as "Dopuni"), not only in the name.
+          if (d.shop) await setReceiptData(token, r.id, { shop: d.shop.slice(0, 40), checked: '3' });
         } catch {
           // unreadable (e.g. a photo): keep its current name
         }
@@ -41,8 +46,9 @@ export default function RenameExisting({ token, folder, format, onFail }) {
         Alert.alert('Nema promena', 'Svi računi već imaju ime po ovom formatu.');
         return;
       }
-      const examples = plan.slice(0, 3).map(p => `${p.from}\n→ ${p.to}`).join('\n\n');
-      Alert.alert(`Preimenovati ${plan.length} računa?`, examples + (plan.length > 3 ? '\n\n…' : ''), [
+      // The whole list, so every new name can be checked before anything changes (the dialog scrolls).
+      const list = plan.map(p => `${p.from.replace(/\.pdf$/, '')}\n→ ${p.to.replace(/\.pdf$/, '')}`).join('\n\n');
+      Alert.alert(`Preimenovati ${plan.length} računa?`, list, [
         { text: 'Otkaži', style: 'cancel' },
         { text: 'Preimenuj', onPress: () => apply(plan, described) },
       ]);

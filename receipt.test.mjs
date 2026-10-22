@@ -400,7 +400,8 @@ console.log('shops ok');
   // Categories from items when the shop isn't a known chain.
   assert.equal(P.category({ shop: 'AUTO KRALJEVO', items: [{ name: 'D2F003TT TERMOSTAT_24501 /kom', total: 1700 }] }), 'Auto');
   assert.equal(P.category({ shop: 'CRAFTER doo', items: [{ name: '030101225 4M MASKA CRNA', total: 1058 }, { name: 'TITANIUM VISION ČISTAČ STAKLA 250ML', total: 319 }] }), 'Kuća');
-  assert.equal(P.category({ shop: 'Telekom Srbija a.d.', items: [{ name: 'BEKO Mašine za pranje veša', total: 40998.9 }] }), 'Telefon i internet'); // chain wins
+  assert.equal(P.category({ shop: 'Telekom Srbija a.d.', items: [{ name: 'BEKO Mašine za pranje veša', total: 40998.9 }] }), 'Tehnika'); // items win
+  assert.equal(P.category({ shop: 'Telekom Srbija a.d.', items: [{ name: 'Mesečna pretplata', total: 2500 }] }), 'Telefon i internet'); // unknown items: the chain
   assert.equal(P.category({ shop: 'Nepoznato doo', items: [{ name: 'BEKO Mašine za pranje veša', total: 40998.9 }, { name: 'HLEB', total: 80 }] }), 'Tehnika');
 
   // First installment month chosen by the user.
@@ -438,6 +439,85 @@ console.log('shops ok');
   assert.equal(legacyFields('Предузеће: CRAFTER doo\n').shop, 'CRAFTER doo');
   const { receiptInfo } = await import('./stats.js');
   assert.equal(receiptInfo({ id: 'a', name: 'x.pdf', appProperties: { checked: '1' } }).checked, false); // read again
-  assert.equal(receiptInfo({ id: 'a', name: 'x.pdf', appProperties: { checked: '2' } }).checked, true);
+  assert.equal(receiptInfo({ id: 'a', name: 'x.pdf', appProperties: { checked: '3' } }).checked, true);
   console.log('legacy shop ok');
+}
+{
+  // The PURS page writes Cyrillic labels as numeric entities; journals may print the tax number without "ПИБ:".
+  const { receiptHeader } = await import('./receipt.js');
+  const page = '<p><strong>&#x41F;&#x440;&#x435;&#x434;&#x443;&#x437;&#x435;&#x45B;&#x435;:</strong>&nbsp;<span>Telekom Srbija a.d. Beograd</span></p>'
+    + '<p><strong>&#x41C;&#x435;&#x441;&#x442;&#x43E; &#x43F;&#x440;&#x43E;&#x434;&#x430;&#x458;&#x435;:</strong>&nbsp;<span>mts W Vrnja&#x10D;ka Banja</span></p>';
+  assert.deepEqual(receiptHeader(page, '<pre>x</pre>'), { shop: 'Telekom Srbija a.d. Beograd', place: 'mts W Vrnjačka Banja' });
+  const { dataFromText } = await import('./rename.js');
+  const journal = '============ ФИСКАЛНИ РАЧУН ============\n               100002887                \n      Telekom Srbija a.d. Beograd       \n'
+    + '      1405628-mts W Vrnjačka Banja      \n           КНЕЗА МИЛОША 13              \nКасир:                                  \n';
+  const d = dataFromText(journal);
+  assert.equal(d.shop, 'Telekom Srbija a.d. Beograd');
+  assert.equal(d.place, 'mts W Vrnjačka Banja');
+  console.log('entities ok');
+}
+{
+  const { filterReceipts, matchedItem } = await import('./stats.js');
+  const { widgetSummary } = await import('./plans.js');
+  const list = [
+    { id: 1, shop: 'CRAFTER doo', name: '2026-10-19_Crafter', total: 5637, date: new Date(2026, 9, 19), items: [{ name: '220300089 TITANIUM VISION ČISTAČ STAKLA 250ML', total: 319 }] },
+    { id: 2, shop: 'Telekom Srbija a.d.', name: '2026-10-21_TelekomSrbija_Bosch', total: 45998.6, date: new Date(2026, 9, 21), items: [{ name: 'BOSCH Inverter klime', total: 45998.6 }] },
+    { id: 3, shop: 'MAXI', name: 'x', total: 100, date: new Date(2026, 9, 1), items: [{ name: 'ЧИСТАЧ ЗА ПОД', total: 100 }] },
+  ];
+  assert.deepEqual(filterReceipts(list, 'cistac').map(r => r.id), [1, 3]); // Latin, no diacritics, Cyrillic item
+  assert.deepEqual(filterReceipts(list, 'čistač stakla').map(r => r.id), [1]);
+  assert.deepEqual(filterReceipts(list, 'klime').map(r => r.id), [2]);
+  assert.deepEqual(filterReceipts(list, 'telekom').map(r => r.id), [2]);
+  assert.equal(matchedItem(list[0], 'cistac'), 'Titanium vision čistač stakla');
+  assert.equal(matchedItem(list[1], 'telekom'), ''); // matched the shop, not an item
+  assert.equal(filterReceipts(list, '  ').length, 3);
+
+  const w = widgetSummary([{ ...list[1], installments: 24 }, list[0]], 60000, new Date(2026, 9, 25));
+  assert.equal(w.spent, 51635.6);
+  assert.equal(w.count, 2);
+  assert.equal(w.nextRate.amount, 1916.61);
+  assert.equal(w.nextRate.due.slice(0, 7), '2026-11');
+  console.log('search/widget ok');
+}
+{
+  // Drive's text of a saved PDF: the journal's lines joined by runs of spaces (shape copied from a real export).
+  const { dataFromText, renamePlan } = await import('./rename.js');
+  const merged = '\uFEFF============ ФИСКАЛНИ РАЧУН ============  100416234  \r\n TEHNOMANIJA DOO BEOGRAD   1061841-T033  \r\n ВОЈИСЛАВА ИЛИЋА 1  \r\n Београд  \r\n'
+    + 'Касир: X ЕСИР број: 639/1.0 -------------ПРОМЕТ ПРОДАЈА------------- Артикли \r\n======================================== '
+    + 'Назив Цена Кол. Укупно BBM1345 Mini pekare VOX (Ђ)  \r\n 9.158,00 1 9.158,00 3917063402 POSTELJINA (Ђ)  \r\n 932,88 2 1.865,76 '
+    + '---------------------------------------- Укупан износ: 11.023,76 Платна картица: 11.023,76 ==== ПФР време: 19.10.2022. 21:10:15 '
+    + 'ПФР број рачуна: ZHU4F4NM-R7WS5MO0-1961 Бројач рачуна: 1695/1961ПП';
+  const d = dataFromText(merged);
+  assert.equal(d.shop, 'TEHNOMANIJA DOO BEOGRAD');
+  assert.equal(d.place, 'T033');
+  assert.deepEqual(d.items.map(i => [i.name, i.quantity, i.total]), [['BBM1345 Mini pekare VOX (Ђ)', 1, 9158], ['3917063402 POSTELJINA (Ђ)', 2, 1865.76]]);
+  assert.equal(d.invoiceNumber, 'ZHU4F4NM-R7WS5MO0-1961');
+  const lesnina = dataFromText('============ ФИСКАЛНИ РАЧУН ============  103132663  \r\n LESNINA S  \r\n 1312978-Maloprodaja MOMAX B3   Преконошка 36  \r\n Београд  Касир: 3MCV');
+  assert.deepEqual([lesnina.shop, lesnina.place], ['LESNINA S', 'Maloprodaja MOMAX B3']);
+
+  // Renaming never makes a name poorer: no shop, a guessed shop or no items -> left alone.
+  const base = { id: 'a', name: '2022-10-19_Vox_Mini_Pekare', date: new Date(2022, 9, 19, 12), total: 9158 };
+  assert.equal(renamePlan([{ ...base, shop: 'TEHNOMANIJA DOO', items: [] }], '{datum}_{radnja}_{stavke}').length, 0);
+  assert.equal(renamePlan([{ ...base, shop: 'Vox', shopGuessed: true, items: [{ name: 'VOX Mini pekare', total: 9158 }] }], '{datum}_{radnja}_{stavke}').length, 0);
+  const plan = renamePlan([{ ...base, shop: 'TEHNOMANIJA DOO BEOGRAD', items: [{ name: 'BBM1345 Mini pekare VOX (Ђ)', total: 9158 }] }], '{datum}_{radnja}_{stavke}');
+  assert.equal(plan[0].to, '2022-10-19_Tehnomanija_Vox_Mini_Pekare.pdf');
+  console.log('drive text ok');
+}
+{
+  const { itemLabel } = await import('./stats.js');
+  assert.equal(itemLabel('BOSCH Inverter klime kom'), 'Bosch inverter klime');
+  assert.equal(itemLabel('Parna stanica, 2400W'), 'Parna stanica');
+  console.log('item labels ok');
+}
+{
+  const { itemIcon } = await import('./plans.js');
+  assert.equal(itemIcon('1182520 BOSCH Inverter klime CL3000iU'), '❄️');
+  assert.equal(itemIcon('BEKO Mašine za pranje veša'), '🧺');
+  assert.equal(itemIcon('82271606 LED PLAFONJERA (Ђ)'), '💡');
+  assert.equal(itemIcon('3917063402 POSTELJINA (Ђ)'), '🛏️');
+  assert.equal(itemIcon('BBM1345 Mini pekare VOX (Ђ)'), '🍳');
+  assert.equal(itemIcon('Аванс'), '💶');
+  assert.equal(itemIcon('ЧИСТАЧ СТАКЛА'), '🧴');
+  assert.equal(itemIcon('XYZ 123'), '🛍️');
+  console.log('item icons ok');
 }

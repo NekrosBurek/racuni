@@ -14,7 +14,9 @@ export function dataFromText(text) {
 export function renamePlan(receipts, format) {
   const plan = [];
   for (const r of receipts) {
-    if (!r.date || !(r.shop || r.items?.length)) continue;
+    // Only with both the shop and the items known: a name built from less would be poorer than the current one
+    // ("…_Vox_Mini_Pekare" -> "…_Vox").
+    if (!r.date || !r.shop || r.shopGuessed || !r.items?.length) continue;
     const to = fileName(format, {
       date: r.date, total: r.total ?? 0, shop: r.shop, place: r.place, items: r.items ?? [], invoiceNumber: r.invoiceNumber ?? '',
     });
