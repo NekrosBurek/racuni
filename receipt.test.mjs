@@ -508,3 +508,15 @@ console.log('shops ok');
   assert.equal(itemLabel('Parna stanica, 2400W'), 'Parna stanica');
   console.log('item labels ok');
 }
+{
+  const { itemIcon } = await import('./plans.js');
+  assert.equal(itemIcon('1182520 BOSCH Inverter klime CL3000iU'), '❄️');
+  assert.equal(itemIcon('BEKO Mašine za pranje veša'), '🧺');
+  assert.equal(itemIcon('82271606 LED PLAFONJERA (Ђ)'), '💡');
+  assert.equal(itemIcon('3917063402 POSTELJINA (Ђ)'), '🛏️');
+  assert.equal(itemIcon('BBM1345 Mini pekare VOX (Ђ)'), '🍳');
+  assert.equal(itemIcon('Аванс'), '💶');
+  assert.equal(itemIcon('ЧИСТАЧ СТАКЛА'), '🧴');
+  assert.equal(itemIcon('XYZ 123'), '🛍️');
+  console.log('item icons ok');
+}

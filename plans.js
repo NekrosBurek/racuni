@@ -37,6 +37,33 @@ const ITEM_RULES = [
   [/MLEKO|HLEB|JOGURT|\bSIR\b|MESO|PILET|SVINJ|JUNET|JAJA|BRASNO|SECER|ULJE|KAFA|\bCAJ\b|\bSOK\b|VODA|PIVO|VINO|COKOLAD|KEKS|BANAN|JABUK|KROMPIR|\bLUK\b|PARADAJZ|TESTENIN|PIRINAC|SALAM|KOBASIC|PASTET|PAVLAK|MARGARIN|PUTER|NAPOLITANK|CIPS|SLADOLED|PECIV|KIFL|BUREK/, 'Hrana'],
 ];
 
+// A picture for one item in the receipt gallery: a specific one for common things, else its category's.
+const ITEM_ICONS = [
+  [/KLIM|INVERTER/, '❄️'], [/MASIN[AE] ZA (PRANJE|SUSENJE)|VES MASIN/, '🧺'], [/FRIZIDER|ZAMRZIVAC/, '🧊'],
+  [/TELEVIZOR|\bTV\b/, '📺'], [/TELEFON|MOBIL|HONOR|SAMSUNG GALAXY|IPHONE|XIAOMI|REDMI/, '📱'], [/LAPTOP|RACUNAR|MONITOR/, '💻'],
+  [/PLAFONJER|SIJALIC|LAMP|\bLED\b|SVETILJK/, '💡'], [/POSTELJIN|JASTU|CARSAV|POKRIVAC|DUSEK/, '🛏️'],
+  [/GARNITUR|SOFA|KAUC|FOTELJ|STOLIC|STO\b|STOLIC|ORMAR/, '🛋️'], [/UTICNIC|PRIKLJUCNIC|PREKIDAC|KABL|PRODUZNI/, '🔌'],
+  [/PEKAR|TOSTER|MIKSER|KUVAL|BOKAL|LONAC|TIGANJ/, '🍳'], [/PEGL|PARN[AE] STANIC/, '👔'], [/USISIVAC/, '🧹'],
+  [/TERMOSTAT|FILTER|VILJUSK|AKUMULATOR|GUM[AE]\b|SVECIC|KOCION/, '🔧'], [/BENZIN|DIZEL|\bBMB\b|TNG/, '⛽'],
+  [/MLEKO|JOGURT|PAVLAK/, '🥛'], [/HLEB|PECIV|KIFL|BUREK/, '🍞'], [/SIR\b|KACKAVALJ/, '🧀'], [/MESO|PILET|SVINJ|JUNET|KOBASIC|SALAM/, '🥩'],
+  [/JAJA/, '🥚'], [/BANAN|JABUK|VOCE|POMORANDZ/, '🍎'], [/KROMPIR|LUK\b|PARADAJZ|POVRC/, '🥔'], [/VODA|SOK|PIVO|VINO|COLA/, '🥤'],
+  [/KAFA|ESPRESSO|CAPPUCCINO/, '☕'], [/COKOLAD|KEKS|SLATKIS|BOMBON/, '🍫'], [/DETERDZENT|OMEKSIVAC|CISTAC|SREDSTVO ZA/, '🧴'],
+  [/SAMPON|SAPUN|PASTA ZA ZUBE|KREMA|DEZODORANS/, '🧼'], [/TOALET PAPIR|UBRUS|MARAMIC/, '🧻'], [/NOKT|LAK ZA/, '💅'],
+  [/TABLET|KAPSUL|SIRUP|VITAMIN|\bLEK\b/, '💊'], [/MAJIC|DUKS|KOSULJ|JAKN/, '👕'], [/PANTALON|FARMERK/, '👖'], [/PATIK|CIPEL/, '👟'],
+  [/AVANS|УПЛАТА|UPLATA/, '💶'],
+];
+const CATEGORY_ICONS = {
+  Hrana: '🛒', Drogerija: '🧴', Apoteka: '💊', Tehnika: '🔌', Kuća: '🏠', Gorivo: '⛽', Auto: '🚗', Odeća: '👕',
+  Restorani: '🍽️', 'Telefon i internet': '📱',
+};
+
+export function itemIcon(name) {
+  const text = plain(String(name));
+  const specific = ITEM_ICONS.find(([re]) => re.test(text))?.[1];
+  if (specific) return specific;
+  return CATEGORY_ICONS[ITEM_RULES.find(([re]) => re.test(text))?.[1]] ?? '🛍️';
+}
+
 // The category the items cost most in, or null when none of them is recognized.
 function itemsCategory(items) {
   const totals = new Map();
