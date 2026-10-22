@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths-ignore: ['**.md', 'LICENSE', '.gitignore']
-  # Pull requests only build (no signing, no release), so native changes are compiled before merging.
+  # Pull requests build an x86_64 APK for the Android emulator (no release), so changes can be tried before merging.
   pull_request:
     branches: [main]
     paths-ignore: ['**.md', 'LICENSE', '.gitignore']
@@ -21,6 +21,9 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # Phones only need the two ARM builds; the emulator on the PC is x86_64. Each extra ABI recompiles all native code.
+      ABIS: ${{ github.event_name == 'pull_request' && 'x86_64' || 'arm64-v8a,armeabi-v7a' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -46,7 +49,7 @@ jobs:
       # Restored after npm ci, which would delete the node_modules parts.
       - uses: actions/cache@v4
         with:
-          key: native-${{ runner.os }}-${{ hashFiles('package-lock.json', 'app.config.js', 'assets/**', 'modules/**') }}
+          key: native-${{ runner.os }}-${{ env.ABIS }}-${{ hashFiles('package-lock.json', 'app.config.js', 'assets/**', 'modules/**') }}
           path: |
             android
             node_modules/**/android/build
@@ -63,12 +66,11 @@ jobs:
         env:
           BUILD_NUMBER: ${{ github.run_number }}
 
-      # Phones only need the two ARM builds; x86/x86_64 run only on emulators, and each extra ABI recompiles all native code.
       - name: Build APK
         # R8 shrinking took ~2.5 min per build; a sideloaded APK doesn't need it.
         run: >-
           ./gradlew assembleRelease --build-cache
-          -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+          -PreactNativeArchitectures=${{ env.ABIS }}
           -Pandroid.enableMinifyInReleaseBuilds=false
           -Pandroid.enableShrinkResourcesInReleaseBuilds=false
         working-directory: android
@@ -79,9 +81,9 @@ jobs:
           CCACHE_NOHASHDIR: 'true'
           CCACHE_SLOPPINESS: include_file_mtime,include_file_ctime,time_macros,pch_defines
 
-      # Re-sign with our own key so every release installs over the previous one.
+      # Re-sign with our own key so every release installs over the previous one (and Google sign-in, which checks
+      # the key, also works in the emulator build).
       - name: Sign APK
-        if: github.event_name != 'pull_request'
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -92,6 +94,14 @@ jobs:
             --out racuni.apk android/app/build/outputs/apk/release/app-release.apk
           "$BT/apksigner" verify racuni.apk
           rm release.keystore
+
+      - name: Emulator APK
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: racuni-emulator
+          path: racuni.apk
+          retention-days: 14
 
       - name: Publish release
         if: github.event_name != 'pull_request'
