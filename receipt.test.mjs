@@ -424,3 +424,20 @@ console.log('shops ok');
   assert.deepEqual(warrantyReminders([r], x => x.shop, new Date(2028, 9, 1)).map(n => n.id), ['warranty-k-7']);
   console.log('reminders ok');
 }
+{
+  // Old PDFs: Drive's text of the PURS page may list the labels first and the values after them.
+  const { legacyFields } = await import('./legacy.js');
+  const { dataFromText } = await import('./rename.js');
+  const columns = 'Предузеће:\nМесто продаје:\nАдреса:\nКУВАЛО ТРГОВИНА DOO\nKuvalo shop 3\nBulevar 1\n'
+    + '============ ФИСКАЛНИ РАЧУН ============\nПИБ: 101234567\nПредузеће: KUVALO TRGOVINA DOO\nМесто продаје: Kuvalo shop 3\n';
+  assert.equal(legacyFields(columns).shop, 'KUVALO TRGOVINA DOO'); // the journal's own line, not the label column
+  assert.equal(legacyFields(columns).place, 'Kuvalo shop 3');
+  assert.equal(legacyFields('Предузеће:\nМесто продаје:\nНешто\n').shop, ''); // never a label as the shop
+  const bare = '============ ФИСКАЛНИ РАЧУН ============\n112069571\nCRAFTER doo\nМП 01 ЗМАЈ\n';
+  assert.equal(dataFromText(bare).shop, 'CRAFTER doo');
+  assert.equal(legacyFields('Предузеће: CRAFTER doo\n').shop, 'CRAFTER doo');
+  const { receiptInfo } = await import('./stats.js');
+  assert.equal(receiptInfo({ id: 'a', name: 'x.pdf', appProperties: { checked: '1' } }).checked, false); // read again
+  assert.equal(receiptInfo({ id: 'a', name: 'x.pdf', appProperties: { checked: '2' } }).checked, true);
+  console.log('legacy shop ok');
+}

@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, Pressable, SectionList, Text, TextInput, View } from 'react-native';
 import { listReceipts, trashReceipt, pdfText, setReceiptData } from '../drive';
-import { receiptInfo, groupByMonth, filterReceipts, itemsSummary } from '../stats';
-import { legacyFields } from '../legacy';
+import { receiptInfo, receiptDescription, groupByMonth, filterReceipts, itemsSummary } from '../stats';
+import { dataFromText } from '../rename';
 import Viewer from './Viewer';
 import { ShopIcon } from './ShopIcon';
 import { makeStyles, useTheme } from '../theme';
@@ -17,6 +17,8 @@ const badges = r => {
   const rate = installments(r);
   return [warranty(r)?.active && '🛡️', rate?.left && `💳 ${rate.paid}/${rate.count}`].filter(Boolean).join(' ');
 };
+// The shop, unless it was only read from the file name (then possibly an item's brand): the main item instead.
+const title = r => (r.shopGuessed ? itemsSummary(r) || r.shop || r.name : r.shop || r.name);
 const money = n => n.toLocaleString('sr-RS', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // Shared by the list and the overview, so both show the same data after a delete or a fill-in.
@@ -57,15 +59,18 @@ export function useReceipts(token, settings, onFail) {
 
 // Reads one old receipt's PDF text through Drive and stores what it finds as the file's data.
 async function fillIn(token, r) {
-  const f = legacyFields(await pdfText(token, r.id));
-  const data = { checked: '1' }; // tried once; files without readable text don't come back to the list
+  const f = dataFromText(await pdfText(token, r.id));
+  const data = { checked: '2' }; // tried once; files without readable text don't come back to the list
   if (f.total !== null) data.total = String(f.total);
   if (f.date) data.date = f.date.toISOString();
   if (f.invoiceNumber) data.invoiceNumber = f.invoiceNumber;
   if (f.shop && (!r.shop || r.shopGuessed)) data.shop = f.shop.slice(0, 40);
-  await setReceiptData(token, r.id, data);
+  // Place and items too, so the receipt gets its store logo, item summary and category like new ones.
+  const described = r.items === null && (f.place || f.items.length) ? { place: f.place, items: f.items } : null;
+  await setReceiptData(token, r.id, data, described && receiptDescription(described));
   return {
     ...r,
+    ...(described ?? {}),
     checked: true,
     total: f.total ?? r.total,
     date: f.date ?? r.date,
@@ -201,7 +206,7 @@ export default function ReceiptList({ token, data, onFail }) {
             <Pressable style={({ pressed }) => [styles.row, pressed && styles.pressed]} {...press(item)}>
               <ShopIcon receipt={item} dark={c.dark} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.rowTitle} numberOfLines={1}>{item.shop || item.name}</Text>
+                <Text style={styles.rowTitle} numberOfLines={1}>{title(item)}</Text>
                 <Text style={styles.rowSub} numberOfLines={1}>{[day(item.date), badges(item), itemsSummary(item) || item.name].filter(Boolean).join(' · ')}</Text>
               </View>
               <Text style={[styles.amount, item.total === null && styles.amountMissing]}>
@@ -237,7 +242,7 @@ function Card({ token, item, ...press }) {
       </View>
       <View style={styles.cardInfo}>
         <ShopIcon receipt={item} size={22} dark={c.dark} />
-        <Text style={styles.cardShop} numberOfLines={1}>{item.shop || item.name}</Text>
+        <Text style={styles.cardShop} numberOfLines={1}>{title(item)}</Text>
       </View>
       {itemsSummary(item) ? <Text style={styles.cardItems} numberOfLines={2}>{itemsSummary(item)}</Text> : null}
       <View style={styles.cardInfo}>

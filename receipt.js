@@ -39,12 +39,18 @@ export function extractJournal(html) {
 const decode = s => s.replace(/&nbsp;|&#160;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
 const journalLines = journal => decode(journal.replace(/<[^>]*>/g, '\n')).split('\n').map(l => l.trim()).filter(Boolean);
 
-// "Предузеће: CRAFTER doo" style header lines; the label may also sit alone with the value on the next line.
+// "Предузеће: CRAFTER doo" style header lines. A value on the label's own line wins; otherwise the next line, unless
+// that is another label (PDF text of the PURS page can list all labels first and the values after them).
+const LABEL_ONLY = /^[^\d:]{2,30}:\s*$/;
 function headerValue(lines, label) {
-  const i = lines.findIndex(l => label.test(l));
-  if (i < 0) return '';
-  const rest = lines[i].replace(label, '').replace(/^\s*:?\s*/, '');
-  return rest || lines[i + 1] || '';
+  let next = '';
+  for (const [i, line] of lines.entries()) {
+    if (!label.test(line)) continue;
+    const rest = line.replace(label, '').replace(/^\s*:?\s*/, '');
+    if (rest) return rest;
+    if (!next && lines[i + 1] && !LABEL_ONLY.test(lines[i + 1])) next = lines[i + 1];
+  }
+  return next;
 }
 
 // Company (legal name) from the journal header; falls back to the line after "ПИБ:".
@@ -53,7 +59,11 @@ export function shopName(journal) {
   const company = headerValue(lines, /^(Предузеће|Preduzeće|Preduzece)\s*:?/i);
   if (company) return company;
   const i = lines.findIndex(l => /^(ПИБ|PIB)\s*:/i.test(l));
-  return i >= 0 && lines[i + 1] ? lines[i + 1].replace(/^[^:]{1,20}:\s*/, '') : '';
+  const afterPib = i >= 0 && lines[i + 1] ? lines[i + 1].replace(/^[^:]{1,20}:\s*/, '') : '';
+  if (afterPib) return afterPib;
+  // Journals that print the tax number alone under the title: "=== ФИСКАЛНИ РАЧУН ===", "112069571", "CRAFTER doo".
+  const t = lines.findIndex(l => /ФИСКАЛНИ РАЧУН|FISKALNI RA[ČC]UN/i.test(l));
+  return t >= 0 && /^\d{9}$/.test(lines[t + 1] ?? '') && lines[t + 2] ? lines[t + 2] : '';
 }
 
 export const placeName = journal => headerValue(journalLines(journal), /^(Место продаје|Mesto prodaje)\s*:?/i);
