@@ -84,7 +84,7 @@ export default function Viewer({ token, receipt, onClose, onDelete, onChange, on
         <View style={{ flex: 1 }}>
           <Text style={styles.title} numberOfLines={1}>{receipt.shop || receipt.name}</Text>
           <Text style={styles.sub} numberOfLines={1}>
-            {[receipt.date?.toLocaleDateString('sr-RS'), receipt.total !== null ? `${receipt.total.toFixed(2)} RSD` : null,
+            {[receipt.date?.toLocaleDateString('sr-RS'), receipt.total !== null ? `${receipt.total.toLocaleString('sr-RS', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} RSD` : null,
               hasItems ? `${receipt.items.length} ${receipt.items.length === 1 ? 'stavka' : 'stavki'}` : null]
               .filter(Boolean).join(' · ')}
           </Text>

@@ -75,13 +75,14 @@ function itemsCategory(items) {
   return [...totals.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 }
 
-// The category the user picked, else the chain's, else what the items are, else a guess from the shop's name.
+// The category the user picked, else what the items are (a klima bought at mts is Tehnika), else the chain's,
+// else a guess from the shop's name.
 export function category(r) {
   if (r.category && CATEGORIES.includes(r.category)) return r.category;
-  const key = chainKey(r);
-  if (BY_TAG[key]) return BY_TAG[key];
   const fromItems = itemsCategory(r.items);
   if (fromItems) return fromItems;
+  const key = chainKey(r);
+  if (BY_TAG[key]) return BY_TAG[key];
   const words = plain(`${r.shop || ''} ${r.place || ''}`);
   return BY_WORD.find(([re]) => re.test(words))?.[1] ?? 'Ostalo';
 }

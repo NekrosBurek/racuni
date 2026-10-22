@@ -400,7 +400,8 @@ console.log('shops ok');
   // Categories from items when the shop isn't a known chain.
   assert.equal(P.category({ shop: 'AUTO KRALJEVO', items: [{ name: 'D2F003TT TERMOSTAT_24501 /kom', total: 1700 }] }), 'Auto');
   assert.equal(P.category({ shop: 'CRAFTER doo', items: [{ name: '030101225 4M MASKA CRNA', total: 1058 }, { name: 'TITANIUM VISION ČISTAČ STAKLA 250ML', total: 319 }] }), 'Kuća');
-  assert.equal(P.category({ shop: 'Telekom Srbija a.d.', items: [{ name: 'BEKO Mašine za pranje veša', total: 40998.9 }] }), 'Telefon i internet'); // chain wins
+  assert.equal(P.category({ shop: 'Telekom Srbija a.d.', items: [{ name: 'BEKO Mašine za pranje veša', total: 40998.9 }] }), 'Tehnika'); // items win
+  assert.equal(P.category({ shop: 'Telekom Srbija a.d.', items: [{ name: 'Mesečna pretplata', total: 2500 }] }), 'Telefon i internet'); // unknown items: the chain
   assert.equal(P.category({ shop: 'Nepoznato doo', items: [{ name: 'BEKO Mašine za pranje veša', total: 40998.9 }, { name: 'HLEB', total: 80 }] }), 'Tehnika');
 
   // First installment month chosen by the user.
