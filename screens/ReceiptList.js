@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, Pressable, SectionList, Text, TextInput, View } from 'react-native';
 import { listReceipts, trashReceipt, pdfText, setReceiptData } from '../drive';
-import { receiptInfo, receiptDescription, groupByMonth, filterReceipts, itemsSummary } from '../stats';
+import { receiptInfo, receiptDescription, groupByMonth, filterReceipts, itemsSummary, matchedItem } from '../stats';
 import { dataFromText } from '../rename';
 import Viewer from './Viewer';
 import { ShopIcon } from './ShopIcon';
@@ -147,7 +147,7 @@ export default function ReceiptList({ token, data, onFail }) {
         <View style={styles.searchRow}>
           <TextInput
             style={styles.search}
-            placeholder="Pretraži radnju, datum, iznos…"
+            placeholder="Pretraži radnju, artikal, datum, iznos…"
             placeholderTextColor={c.textFaint}
             value={query}
             onChangeText={setQuery}
@@ -207,7 +207,7 @@ export default function ReceiptList({ token, data, onFail }) {
               <ShopIcon receipt={item} dark={c.dark} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.rowTitle} numberOfLines={1}>{title(item)}</Text>
-                <Text style={styles.rowSub} numberOfLines={1}>{[day(item.date), badges(item), itemsSummary(item) || item.name].filter(Boolean).join(' · ')}</Text>
+                <Text style={styles.rowSub} numberOfLines={1}>{[day(item.date), badges(item), (query && matchedItem(item, query) && `🔎 ${matchedItem(item, query)}`) || itemsSummary(item) || item.name].filter(Boolean).join(' · ')}</Text>
               </View>
               <Text style={[styles.amount, item.total === null && styles.amountMissing]}>
                 {item.total !== null ? money(item.total) : '—'}

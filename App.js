@@ -3,7 +3,8 @@ import {
   ActivityIndicator, Alert, AppState, BackHandler, Button, FlatList, Linking, Platform, Pressable, ScrollView, StatusBar, Text, TextInput, Vibration, View,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import { CameraView, useCameraPermissions, scanFromURLAsync } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import * as Print from 'expo-print';
@@ -23,6 +24,8 @@ import Intro from './screens/Intro';
 import RenameExisting from './screens/Rename';
 import { introDone, setIntroDone } from './prefs';
 import { setupNotifications, onUpdateNotificationTap } from './notify';
+import { updateWidget } from './widget';
+import { widgetSummary } from './plans';
 import { makeStyles, useTheme } from './theme';
 
 const TABS = [['scan', '📷', 'Skeniraj'], ['list', '🧾', 'Računi'], ['stats', '📊', 'Pregled'], ['settings', '⚙️', 'Podešavanja']];
@@ -274,6 +277,10 @@ function Main({ token, settings, tab, setTab, onFail, onSettings, onBudget, onLo
   const receipts = useReceipts(token, settings, onFail);
   // Loaded once at start too, so warranty reminders are rescheduled without opening the list.
   useEffect(() => { receipts.reload(); }, [receipts.reload]);
+  // Keeps the home screen widget in step with the receipts and the budget.
+  useEffect(() => {
+    if (receipts.receipts) updateWidget(widgetSummary(receipts.receipts, settings.budget));
+  }, [receipts.receipts, settings.budget]);
   return (
     <View style={{ flex: 1 }}>
       <View style={{ flex: 1 }}>
@@ -482,15 +489,36 @@ function Scanner({ token, settings, onFail, active }) {
     return <PaperScan onClose={() => setPaper(false)} onVerified={onVerified} onSaveImages={onSaveImages} onFail={onFail} />;
   }
 
+  // Screenshots or photos of receipts (e-mailed receipts, online shops): each picked image's QR code goes through
+  // the same queue as a camera scan. Several images can be picked at once.
+  async function scanImages() {
+    const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, selectionLimit: 50 });
+    if (picked.canceled) return;
+    for (const asset of picked.assets) {
+      try {
+        const [code] = await scanFromURLAsync(asset.uri, ['qr']);
+        if (code) onScan({ data: code.data });
+        else setItems(list => [{ id: `img:${asset.uri}`, kind: 'err', title: 'Slika bez QR koda', text: asset.fileName || 'QR kod nije pronađen na slici.' }, ...list]);
+      } catch (e) {
+        setItems(list => [{ id: `img:${asset.uri}`, kind: 'err', title: 'Slika nije pročitana', text: e.message }, ...list]);
+      }
+    }
+  }
+
   const count = k => items.filter(i => i.kind === k).length;
   return (
     <View style={{ flex: 1 }}>
       <CameraView style={{ flex: 1 }} barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={onScan} />
-      {ocrAvailable && (
-        <Pressable style={styles.scanPaper} onPress={() => setPaper(true)}>
-          <Text style={styles.scanPaperText}>📄 Račun bez QR</Text>
+      <View style={styles.scanButtons}>
+        <Pressable style={styles.scanPaper} onPress={scanImages} accessibilityRole="button">
+          <Text style={styles.scanPaperText}>🖼️ Iz slike</Text>
         </Pressable>
-      )}
+        {ocrAvailable && (
+          <Pressable style={styles.scanPaper} onPress={() => setPaper(true)} accessibilityRole="button">
+            <Text style={styles.scanPaperText}>📄 Račun bez QR</Text>
+          </Pressable>
+        )}
+      </View>
       <View style={styles.sheet}>
         <Text style={styles.summary}>
           {items.length === 0
@@ -558,7 +586,8 @@ const useStyles = makeStyles(c => ({
   err: { color: c.danger },
   errorBar: { position: 'absolute', left: 12, right: 12, bottom: 24, padding: 14, borderRadius: 10, backgroundColor: '#c62828' },
   errorText: { color: '#fff' },
-  scanPaper: { position: 'absolute', top: 12, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#000a', borderRadius: 20, paddingVertical: 8, paddingHorizontal: 16 },
+  scanButtons: { position: 'absolute', top: 12, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 10 },
+  scanPaper: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#000a', borderRadius: 20, paddingVertical: 8, paddingHorizontal: 16 },
   scanPaperText: { color: '#fff', fontWeight: '600' },
   updateBar: { position: 'absolute', left: 12, right: 12, bottom: 24, padding: 14, borderRadius: 10, backgroundColor: c.button, flexDirection: 'row', alignItems: 'center', gap: 10 },
 }));

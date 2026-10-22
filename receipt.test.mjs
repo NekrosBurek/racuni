@@ -455,3 +455,26 @@ console.log('shops ok');
   assert.equal(d.place, 'mts W Vrnjačka Banja');
   console.log('entities ok');
 }
+{
+  const { filterReceipts, matchedItem } = await import('./stats.js');
+  const { widgetSummary } = await import('./plans.js');
+  const list = [
+    { id: 1, shop: 'CRAFTER doo', name: '2026-10-19_Crafter', total: 5637, date: new Date(2026, 9, 19), items: [{ name: '220300089 TITANIUM VISION ČISTAČ STAKLA 250ML', total: 319 }] },
+    { id: 2, shop: 'Telekom Srbija a.d.', name: '2026-10-21_TelekomSrbija_Bosch', total: 45998.6, date: new Date(2026, 9, 21), items: [{ name: 'BOSCH Inverter klime', total: 45998.6 }] },
+    { id: 3, shop: 'MAXI', name: 'x', total: 100, date: new Date(2026, 9, 1), items: [{ name: 'ЧИСТАЧ ЗА ПОД', total: 100 }] },
+  ];
+  assert.deepEqual(filterReceipts(list, 'cistac').map(r => r.id), [1, 3]); // Latin, no diacritics, Cyrillic item
+  assert.deepEqual(filterReceipts(list, 'čistač stakla').map(r => r.id), [1]);
+  assert.deepEqual(filterReceipts(list, 'klime').map(r => r.id), [2]);
+  assert.deepEqual(filterReceipts(list, 'telekom').map(r => r.id), [2]);
+  assert.equal(matchedItem(list[0], 'cistac'), 'Titanium vision čistač stakla');
+  assert.equal(matchedItem(list[1], 'telekom'), ''); // matched the shop, not an item
+  assert.equal(filterReceipts(list, '  ').length, 3);
+
+  const w = widgetSummary([{ ...list[1], installments: 24 }, list[0]], 60000, new Date(2026, 9, 25));
+  assert.equal(w.spent, 51635.6);
+  assert.equal(w.count, 2);
+  assert.equal(w.nextRate.amount, 1916.61);
+  assert.equal(w.nextRate.due.slice(0, 7), '2026-11');
+  console.log('search/widget ok');
+}

@@ -2,6 +2,8 @@
 // Files saved by the app carry appProperties (total, date, shop, invoiceNumber); older or hand-uploaded ones only
 // have a name, so the date and shop are read from names like "2025-12-20_AutoKraljevo_…" where possible.
 
+import { plain } from './naming.js';
+
 const MONTHS = ['januar', 'februar', 'mart', 'april', 'maj', 'jun', 'jul', 'avgust', 'septembar', 'oktobar', 'novembar', 'decembar'];
 
 // What the file name is built from, kept in the Drive file's description (appProperties allow only ~120 bytes),
@@ -98,13 +100,28 @@ export function groupByMonth(receipts) {
   return [...groups.entries()].map(([key, data]) => ({ key, title: monthLabel(key), total: sum(data), data }));
 }
 
+// Search words, in the same form as the text they're matched against: Latin, no diacritics, upper case.
+const searchWords = query => plain(query.trim()).split(/\s+/).filter(Boolean);
+
+// Shop, file name, amount, date and every item on the receipt; "cistac" finds "ЧИСТАЧ СТАКЛА".
 export function filterReceipts(receipts, query) {
-  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const words = searchWords(query);
   if (!words.length) return receipts;
   return receipts.filter(r => {
-    const text = `${r.shop} ${r.name} ${r.total ?? ''} ${r.date ? r.date.toLocaleDateString('sr-RS') : ''}`.toLowerCase();
+    const items = (r.items ?? []).map(i => i.name).join(' ');
+    const text = plain(`${r.shop} ${r.place ?? ''} ${r.name} ${r.total ?? ''} ${r.date ? r.date.toLocaleDateString('sr-RS') : ''} ${items}`);
     return words.every(w => text.includes(w));
   });
+}
+
+// The item that made a receipt match the search (shown under it), or '' when the match was the shop, name or date.
+export function matchedItem(r, query) {
+  const words = searchWords(query);
+  if (!words.length) return '';
+  const head = plain(`${r.shop} ${r.place ?? ''} ${r.name}`);
+  if (words.every(w => head.includes(w))) return '';
+  const item = (r.items ?? []).find(i => words.some(w => plain(String(i.name)).includes(w)));
+  return item ? itemLabel(item.name) : '';
 }
 
 // This month vs last month, the average receipt, the shops you spend most at, and the last 6 months.

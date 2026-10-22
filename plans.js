@@ -116,6 +116,21 @@ export function warrantyReminders(receipts, label, now = new Date()) {
   return out;
 }
 
+// What the home screen widget shows: this month's spending and budget, and the next installment due.
+export function widgetSummary(receipts, budget, now = new Date()) {
+  const b = budgetStatus(receipts, budget, now);
+  const next = receipts.map(r => ({ r, s: installments(r, now) })).filter(x => x.s?.nextDue)
+    .sort((x, y) => x.s.nextDue - y.s.nextDue)[0];
+  return {
+    month: now.toLocaleDateString('sr-RS', { month: 'long' }),
+    spent: b.spent,
+    budget: b.budget,
+    ratio: b.ratio,
+    count: receipts.filter(r => monthKey(r.date) === monthKey(now)).length,
+    nextRate: next ? { label: next.r.shop || next.r.name, amount: next.s.perMonth, due: next.s.nextDue.toISOString() } : null,
+  };
+}
+
 // This month's spending against the budget (0 = no budget set).
 export function budgetStatus(receipts, budget, now = new Date()) {
   const key = monthKey(now);

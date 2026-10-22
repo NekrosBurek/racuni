@@ -36,6 +36,21 @@ module.exports = {
     'expo-secure-store',
     'expo-notifications',
     'expo-background-task',
+    ['expo-image-picker', { photosPermission: 'Pristup slikama služi za čitanje QR koda sa slike računa.' }],
+    // Home screen widget: this month's spending, budget, next installment (widget.js).
+    ['react-native-android-widget', {
+      widgets: [{
+        name: 'Potrosnja',
+        label: 'Računi – potrošnja',
+        description: 'Potrošnja ovog meseca, budžet i sledeća rata',
+        minWidth: '250dp',
+        minHeight: '110dp',
+        targetCellWidth: 4,
+        targetCellHeight: 2,
+        resizeMode: 'horizontal|vertical',
+        updatePeriodMillis: 0,
+      }],
+    }],
     ['expo-camera', { cameraPermission: 'Kamera služi za skeniranje QR koda na računu.' }],
   ],
 };

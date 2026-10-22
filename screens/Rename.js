@@ -22,7 +22,9 @@ export default function RenameExisting({ token, folder, format, onFail }) {
       for (const [i, r] of missing.entries()) {
         setProgress(`Čitam starije račune ${i + 1}/${missing.length}…`);
         try {
-          const d = dataFromText(await pdfText(token, r.id));
+          const pdfTextValue = await pdfText(token, r.id);
+          console.log('[racuni-pdf-text]', r.name, JSON.stringify(pdfTextValue.slice(0, 1200))); // TEMP debug, remove
+          const d = dataFromText(pdfTextValue);
           const shop = (r.shopGuessed && d.shop) || r.shop || d.shop;
           Object.assign(r, {
             shop,
