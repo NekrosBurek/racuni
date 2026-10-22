@@ -35,6 +35,8 @@ export function receiptInfo(file) {
     id: file.id,
     name: base,
     shop: p.shop || named?.[4]?.replace(/([a-z])([A-Z])/g, '$1 $2') || '',
+    // Only taken from the file name, whose second part may be an item ("…_Beko_Masine…"), not the shop.
+    shopGuessed: !p.shop,
     total,
     date,
     invoiceNumber: p.invoiceNumber || null,
@@ -49,8 +51,30 @@ export function receiptInfo(file) {
     // Set by the user in the receipt view (see plans.js).
     warrantyMonths: Number(p.warranty) || 0,
     installments: Number(p.rate) || 0,
+    rateStart: p.rateStart || '', // YYYY-MM of the first installment
     category: p.category || '',
   };
+}
+
+// "1204155 BEKO Mašine za pranje veša B3WFU48215WW ES (Ђ)" -> "Beko mašine za pranje veša": codes, units and the
+// tax label dropped, sentence case.
+export function itemLabel(name) {
+  const words = String(name)
+    .replace(/\s*\([^)]{1,3}\)\s*$/, '')
+    .replace(/_\d+/g, ' ')
+    .replace(/\/\s*\S{1,4}\.?(?=\s|$)/g, ' ')
+    .split(/\s+/)
+    .filter(w => w && !/\d/.test(w) && (w.length > 2 || /^(i|u|sa|za|na|od|do)$/i.test(w)));
+  const text = words.join(' ').toLowerCase();
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+// The biggest item on the receipt, plus how many others there are.
+export function itemsSummary(r) {
+  const items = (r.items ?? []).filter(i => itemLabel(i.name));
+  if (!items.length) return '';
+  const main = [...items].sort((a, b) => (b.total ?? 0) - (a.total ?? 0))[0];
+  return itemLabel(main.name) + (items.length > 1 ? ` +${items.length - 1}` : '');
 }
 
 export const monthKey = d => (d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` : 'bez-datuma');

@@ -11,3 +11,18 @@ export function isNewer(latest, current) {
   }
   return false;
 }
+
+// Every push to main publishes a GitHub release; returns its version and APK link if it's newer than this build.
+export async function findUpdate() {
+  try {
+    const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`);
+    if (!res.ok) return null;
+    const release = await res.json();
+    const latest = release.tag_name.replace(/^v/, '');
+    if (!isNewer(latest, VERSION)) return null;
+    const asset = release.assets?.find(a => a.name === 'racuni.apk');
+    return { latest, url: asset?.browser_download_url ?? APK_URL };
+  } catch {
+    return null; // offline or GitHub down: just skip the check
+  }
+}

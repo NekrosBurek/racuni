@@ -13,7 +13,7 @@ import {
   fileName, DEFAULT_FORMAT, FORMAT_TOKENS,
 } from './receipt';
 import { findSettings, listFolders, saveSettings, findReceipt, uploadPdf } from './drive';
-import { REPO, APK_URL, VERSION, isNewer } from './version';
+import { APK_URL, VERSION, findUpdate } from './version';
 import { saveLogin, restoreLogin, logout } from './auth';
 import { isAvailable as ocrAvailable } from './modules/text-scanner';
 import PaperScan, { deleteFile } from './PaperScan';
@@ -22,6 +22,7 @@ import Stats from './screens/Stats';
 import Intro from './screens/Intro';
 import RenameExisting from './screens/Rename';
 import { introDone, setIntroDone } from './prefs';
+import { setupNotifications, onUpdateNotificationTap } from './notify';
 import { makeStyles, useTheme } from './theme';
 
 const TABS = [['scan', '📷', 'Skeniraj'], ['list', '🧾', 'Računi'], ['stats', '📊', 'Pregled'], ['settings', '⚙️', 'Podešavanja']];
@@ -36,21 +37,6 @@ const REFRESH_EARLY_MS = 5 * 60 * 1000;
 
 const CHECK_EVERY_MS = 60 * 60 * 1000;
 const UPDATE_FILE = 'racuni-update.apk';
-
-// Every push to main publishes a GitHub release; returns its version and APK link if it's newer than this build.
-async function findUpdate() {
-  try {
-    const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`);
-    if (!res.ok) return null;
-    const release = await res.json();
-    const latest = release.tag_name.replace(/^v/, '');
-    if (!isNewer(latest, VERSION)) return null;
-    const asset = release.assets?.find(a => a.name === 'racuni.apk');
-    return { latest, url: asset?.browser_download_url ?? APK_URL };
-  } catch {
-    return null; // offline or GitHub down: just skip the check
-  }
-}
 
 // Downloads the APK into the cache and hands it to the Android installer; the browser is the fallback.
 async function installUpdate(url) {
@@ -94,7 +80,9 @@ function useUpdates() {
 
     check();
     const sub = AppState.addEventListener('change', state => { if (state === 'active') check(); });
-    return () => sub.remove();
+    // Tapping the "new version" notification asks right away, even if the hourly check just ran.
+    const tap = onUpdateNotificationTap(() => { lastCheck.current = 0; check(); });
+    return () => { sub.remove(); tap.remove(); };
   }, []);
 
   return downloading;
@@ -213,6 +201,8 @@ export default function App() {
   }, []);
 
   // Keyed on being signed in, not on the token, so an hourly renewal doesn't reload the screen.
+  useEffect(() => { if (signedIn) setupNotifications(); }, [signedIn]);
+
   useEffect(() => {
     if (!signedIn) return;
     setSettings(undefined);
@@ -282,6 +272,8 @@ function Main({ token, settings, tab, setTab, onFail, onSettings, onBudget, onLo
   const styles = useStyles();
   const c = useTheme();
   const receipts = useReceipts(token, settings, onFail);
+  // Loaded once at start too, so warranty reminders are rescheduled without opening the list.
+  useEffect(() => { receipts.reload(); }, [receipts.reload]);
   return (
     <View style={{ flex: 1 }}>
       <View style={{ flex: 1 }}>

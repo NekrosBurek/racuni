@@ -379,3 +379,48 @@ console.log('shops ok');
   assert.equal(shopDomain({ shop: 'A1 Srbija d.o.o.' }), 'a1.rs');
   assert.equal(shopDomain({ shop: 'SRBIJA' }), null);
 }
+{
+  const { itemLabel, itemsSummary, receiptInfo } = await import('./stats.js');
+  const { shopDomains } = await import('./shops.js');
+  const P = await import('./plans.js');
+  assert.equal(itemLabel('1204155 BEKO Mašine za pranje veša B3WFU48215WW ES (Ђ)'), 'Beko mašine za pranje veša');
+  assert.equal(itemLabel('SS25486-AMC VILJUSKA DESNA_24495 /kom'), 'Viljuska desna');
+  assert.equal(itemsSummary({ items: [{ name: 'HLEB', total: 80 }, { name: '1182520 BOSCH Inverter klime CL3000iU W 35 E', total: 45998.6 }] }),
+    'Bosch inverter klime +1');
+  assert.equal(itemsSummary({ items: null }), '');
+
+  // A shop read from a file name like "…_Beko_Masine…" may be an item's brand: no guessed logo for it.
+  const old = receiptInfo({ id: 'x', name: '2025-09-09_Beko_Masine.pdf' });
+  assert.equal(old.shopGuessed, true);
+  assert.deepEqual(shopDomains(old), []);
+  assert.deepEqual(shopDomains({ shop: 'CRAFTER doo' }), ['crafter.rs', 'crafter.co.rs', 'crafter.com']);
+  assert.deepEqual(shopDomains({ shop: 'PEKARA doo' }), []);
+  assert.equal(receiptInfo({ id: 'y', name: 'a.pdf', appProperties: { shop: 'LIDL SRBIJA KD' } }).shopGuessed, false);
+
+  // Categories from items when the shop isn't a known chain.
+  assert.equal(P.category({ shop: 'AUTO KRALJEVO', items: [{ name: 'D2F003TT TERMOSTAT_24501 /kom', total: 1700 }] }), 'Auto');
+  assert.equal(P.category({ shop: 'CRAFTER doo', items: [{ name: '030101225 4M MASKA CRNA', total: 1058 }, { name: 'TITANIUM VISION ČISTAČ STAKLA 250ML', total: 319 }] }), 'Kuća');
+  assert.equal(P.category({ shop: 'Telekom Srbija a.d.', items: [{ name: 'BEKO Mašine za pranje veša', total: 40998.9 }] }), 'Telefon i internet'); // chain wins
+  assert.equal(P.category({ shop: 'Nepoznato doo', items: [{ name: 'BEKO Mašine za pranje veša', total: 40998.9 }, { name: 'HLEB', total: 80 }] }), 'Tehnika');
+
+  // First installment month chosen by the user.
+  const klima = { total: 24000, date: new Date(2026, 9, 21, 12), installments: 24 };
+  let s = P.installments(klima, new Date(2026, 10, 3)); // default: first in Nov 2026
+  assert.deepEqual([s.paid, P.monthValue(s.firstDue), P.monthValue(s.lastDue), P.monthValue(s.nextDue)], [1, '2026-11', '2028-10', '2026-12']);
+  s = P.installments({ ...klima, rateStart: '2026-10' }, new Date(2026, 10, 3));
+  assert.deepEqual([s.paid, P.monthValue(s.lastDue)], [2, '2028-09']);
+  s = P.installments({ ...klima, rateStart: '2027-01' }, new Date(2026, 10, 3));
+  assert.deepEqual([s.paid, s.left], [0, 24]);
+  assert.equal(P.installments(klima, new Date(2029, 0, 1)).nextDue, null);
+  assert.deepEqual(P.firstInstallmentChoices(klima).map(P.monthValue), ['2026-10', '2026-11', '2026-12', '2027-01']);
+  console.log('labels/categories/rates ok');
+}
+{
+  const { warrantyReminders } = await import('./plans.js');
+  const r = { id: 'k', date: new Date(2026, 9, 21, 12), warrantyMonths: 24, shop: 'Telekom' };
+  const all = warrantyReminders([r, { id: 'n', date: new Date(2026, 9, 1) }], x => x.shop, new Date(2026, 9, 22));
+  assert.deepEqual(all.map(n => [n.id, n.date.toISOString().slice(0, 10)]), [['warranty-k-30', '2028-09-21'], ['warranty-k-7', '2028-10-14']]);
+  assert.match(all[0].body, /^Telekom: garancija ističe .* \(za 30 dana\)\.$/);
+  assert.deepEqual(warrantyReminders([r], x => x.shop, new Date(2028, 9, 1)).map(n => n.id), ['warranty-k-7']);
+  console.log('reminders ok');
+}

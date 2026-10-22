@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, Pressable, SectionList, Text, TextInput, View } from 'react-native';
 import { listReceipts, trashReceipt, pdfText, setReceiptData } from '../drive';
-import { receiptInfo, groupByMonth, filterReceipts } from '../stats';
+import { receiptInfo, groupByMonth, filterReceipts, itemsSummary } from '../stats';
 import { legacyFields } from '../legacy';
 import Viewer from './Viewer';
 import { ShopIcon } from './ShopIcon';
 import { makeStyles, useTheme } from '../theme';
 import { installments, warranty } from '../plans';
+import { scheduleWarrantyReminders } from '../notify';
 
 const day = d => (d ? d.toLocaleDateString('sr-RS') : '');
 // Small markers in the list for receipts with a running warranty or unpaid installments.
@@ -28,7 +29,11 @@ export function useReceipts(token, settings, onFail) {
   const reload = useCallback(() => {
     setLoading(true);
     return listReceipts(tokenRef.current, settings.folder.id)
-      .then(files => setReceipts(files.map(receiptInfo)), onFail)
+      .then(files => {
+        const list = files.map(receiptInfo);
+        setReceipts(list);
+        scheduleWarrantyReminders(list);
+      }, onFail)
       .finally(() => setLoading(false));
   }, [settings.folder.id, onFail]);
 
@@ -41,7 +46,11 @@ export function useReceipts(token, settings, onFail) {
     }
   }, [onFail]);
 
-  const replace = useCallback(r => setReceipts(list => list.map(x => (x.id === r.id ? r : x))), []);
+  const replace = useCallback(r => setReceipts(list => {
+    const next = list.map(x => (x.id === r.id ? r : x));
+    scheduleWarrantyReminders(next); // a warranty may have just been set or changed
+    return next;
+  }), []);
 
   return { receipts, loading, reload, remove, replace };
 }
@@ -53,7 +62,7 @@ async function fillIn(token, r) {
   if (f.total !== null) data.total = String(f.total);
   if (f.date) data.date = f.date.toISOString();
   if (f.invoiceNumber) data.invoiceNumber = f.invoiceNumber;
-  if (f.shop && !r.shop) data.shop = f.shop.slice(0, 40);
+  if (f.shop && (!r.shop || r.shopGuessed)) data.shop = f.shop.slice(0, 40);
   await setReceiptData(token, r.id, data);
   return {
     ...r,
@@ -61,7 +70,8 @@ async function fillIn(token, r) {
     total: f.total ?? r.total,
     date: f.date ?? r.date,
     invoiceNumber: f.invoiceNumber ?? r.invoiceNumber,
-    shop: r.shop || f.shop,
+    shop: f.shop && (!r.shop || r.shopGuessed) ? f.shop : r.shop,
+    shopGuessed: r.shopGuessed && !f.shop,
     complete: !!(f.invoiceNumber ?? r.invoiceNumber) && (f.total ?? r.total) !== null,
   };
 }
@@ -80,7 +90,7 @@ export default function ReceiptList({ token, data, onFail }) {
   const shown = useMemo(() => filterReceipts(receipts ?? [], query), [receipts, query]);
   const sections = useMemo(() => groupByMonth(shown), [shown]);
   const newestFirst = useMemo(() => sections.flatMap(s => s.data), [sections]);
-  const missing = (receipts ?? []).filter(r => !r.checked && (r.total === null || !r.invoiceNumber));
+  const missing = (receipts ?? []).filter(r => !r.checked && (r.total === null || !r.invoiceNumber || r.shopGuessed));
   const total = shown.reduce((s, r) => s + (r.total ?? 0), 0);
 
   function askDelete(r) {
@@ -155,7 +165,7 @@ export default function ReceiptList({ token, data, onFail }) {
             <Text style={styles.fillText}>
               {filling
                 ? `Dopunjujem ${filling.done}/${filling.of}…`
-                : `${missing.length} starijih računa nema iznos ili PFR broj. Dodirni da ih dopuniš iz PDF-a.`}
+                : `${missing.length} starijih računa nema iznos, PFR broj ili radnju. Dodirni da ih dopuniš iz PDF-a.`}
             </Text>
           </Pressable>
         )}
@@ -192,7 +202,7 @@ export default function ReceiptList({ token, data, onFail }) {
               <ShopIcon receipt={item} dark={c.dark} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.rowTitle} numberOfLines={1}>{item.shop || item.name}</Text>
-                <Text style={styles.rowSub} numberOfLines={1}>{[day(item.date), badges(item), item.name].filter(Boolean).join(' · ')}</Text>
+                <Text style={styles.rowSub} numberOfLines={1}>{[day(item.date), badges(item), itemsSummary(item) || item.name].filter(Boolean).join(' · ')}</Text>
               </View>
               <Text style={[styles.amount, item.total === null && styles.amountMissing]}>
                 {item.total !== null ? money(item.total) : '—'}
@@ -229,6 +239,7 @@ function Card({ token, item, ...press }) {
         <ShopIcon receipt={item} size={22} dark={c.dark} />
         <Text style={styles.cardShop} numberOfLines={1}>{item.shop || item.name}</Text>
       </View>
+      {itemsSummary(item) ? <Text style={styles.cardItems} numberOfLines={2}>{itemsSummary(item)}</Text> : null}
       <View style={styles.cardInfo}>
         <Text style={styles.cardDate}>{day(item.date)}</Text>
         <Text style={[styles.cardAmount, item.total === null && styles.amountMissing]}>
@@ -265,6 +276,7 @@ const useStyles = makeStyles(c => ({
   thumb: { width: '100%', height: '100%' },
   cardInfo: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6, paddingHorizontal: 8, paddingTop: 6 },
   cardShop: { flex: 1, fontWeight: '600', color: c.text, fontSize: 13 },
+  cardItems: { color: c.textDim, fontSize: 12, paddingHorizontal: 8, paddingTop: 2 },
   cardDate: { color: c.textFaint, fontSize: 12, paddingBottom: 8 },
   cardAmount: { fontWeight: '700', color: c.text, fontSize: 13, paddingBottom: 8 },
   empty: { padding: 32, textAlign: 'center', color: c.textFaint },
